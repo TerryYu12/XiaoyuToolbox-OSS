@@ -1,0 +1,688 @@
+/* ============================================================
+   小宇工具箱 · 磁盘清理模块样式 (cleaner.css)
+   基于 Surface Ladder + Hairline 体系 (Linear Modern Dark)
+   ============================================================ */
+
+/* 提权提示条 */
+.cleaner-perm-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(255, 180, 84, 0.08);
+  border: 1px solid rgba(255, 180, 84, 0.25);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  color: var(--warn);
+}
+.cleaner-perm-banner i {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+.cleaner-perm-banner span {
+  flex: 1;
+}
+.cleaner-perm-banner .btn-elevate {
+  background: var(--warn);
+  color: #1a1200;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity .15s;
+}
+.cleaner-perm-banner .btn-elevate:hover {
+  opacity: .9;
+}
+
+/* 盘符选择卡片列表 */
+.cleaner-drives {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.cleaner-drive-card {
+  background: var(--s1);
+  border: 1px solid var(--hair);
+  border-radius: 8px;
+  padding: 10px 14px;
+  cursor: pointer;
+  position: relative;
+  transition: all .15s ease;
+  user-select: none;
+}
+.cleaner-drive-card:hover {
+  border-color: rgba(255,255,255,.2);
+  background: var(--s2);
+}
+.cleaner-drive-card.selected {
+  border-color: var(--acc);
+  background: var(--acc-soft);
+}
+.cleaner-drive-card.selected::after {
+  content: "✓";
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  color: var(--acc);
+  font-weight: 700;
+  font-size: 14px;
+}
+.cleaner-drive-head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.cleaner-drive-name {
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--tx);
+}
+.cleaner-drive-tag {
+  font-size: 11px;
+  color: var(--tx3);
+}
+.cleaner-drive-meta {
+  color: var(--tx2);
+  font-size: 12px;
+  margin-top: 3px;
+}
+.cleaner-drive-bar {
+  height: 5px;
+  background: rgba(255,255,255,.08);
+  border-radius: 3px;
+  margin-top: 8px;
+  overflow: hidden;
+}
+.cleaner-drive-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width .3s ease;
+}
+.cleaner-drive-fill.g { background: var(--ok); }
+.cleaner-drive-fill.y { background: var(--warn); }
+.cleaner-drive-fill.r { background: var(--err); }
+.cleaner-drive-adv {
+  font-size: 11.5px;
+  margin-top: 5px;
+  color: var(--tx3);
+  display: flex;
+  justify-content: space-between;
+}
+
+/* 控制工具条 */
+.cleaner-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.cleaner-toolbar .hud-input {
+  flex: 1;
+  min-width: 220px;
+  background: var(--s1);
+  border: 1px solid var(--hair);
+  color: var(--tx);
+  padding: 7px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+.cleaner-toolbar .hud-input:focus {
+  border-color: var(--acc);
+  outline: none;
+}
+.cleaner-opt-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--tx2);
+  cursor: pointer;
+  user-select: none;
+}
+.cleaner-opt-label input[type="checkbox"] {
+  accent-color: var(--acc);
+  cursor: pointer;
+}
+
+/* 进度提示条 */
+.cleaner-status-box {
+  display: none;
+  align-items: center;
+  gap: 10px;
+  background: var(--s2);
+  border: 1px solid var(--hair);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  color: var(--tx);
+}
+.cleaner-status-box.show {
+  display: flex;
+}
+.cleaner-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--hair);
+  border-top-color: var(--acc);
+  border-radius: 50%;
+  animation: cleaner-spin .8s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes cleaner-spin { to { transform: rotate(360deg); } }
+
+/* 统计卡片网格 */
+.cleaner-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.cleaner-card {
+  background: var(--s1);
+  border: 1px solid var(--hair);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+.cleaner-card .num {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--tx);
+}
+.cleaner-card .lbl {
+  color: var(--tx3);
+  font-size: 12px;
+  margin-top: 3px;
+}
+.cleaner-card.highlight .num {
+  color: var(--ok);
+}
+
+/* 多盘概览条 */
+.cleaner-drivesumm {
+  background: var(--s1);
+  border: 1px solid var(--hair);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  display: none;
+}
+.cleaner-drivesumm.show {
+  display: block;
+}
+.cleaner-drivesumm h4 {
+  font-size: 12px;
+  color: var(--tx3);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+}
+.cleaner-drivesumm-row {
+  display: flex;
+  gap: 12px;
+  padding: 5px 0;
+  font-size: 12.5px;
+  border-bottom: 1px solid var(--hair);
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+.cleaner-drivesumm-row:last-child {
+  border-bottom: none;
+}
+.cleaner-drivesumm-row .dv {
+  font-weight: 700;
+  width: 30px;
+  color: var(--acc-tx);
+}
+.cleaner-drivesumm-row .dt {
+  color: var(--tx2);
+  flex: 1;
+}
+.cleaner-drivesumm-row .dc {
+  color: var(--ok);
+  font-weight: 600;
+}
+
+/* 过滤芯片条 */
+.cleaner-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.cleaner-chips-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.cleaner-chip {
+  background: var(--s1);
+  border: 1px solid var(--hair);
+  color: var(--tx2);
+  padding: 4px 10px;
+  border-radius: 14px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all .15s ease;
+  user-select: none;
+}
+.cleaner-chip:hover {
+  border-color: rgba(255,255,255,.2);
+  color: var(--tx);
+}
+.cleaner-chip.on {
+  color: var(--tx);
+  border-color: var(--acc);
+  background: var(--acc-soft);
+}
+.cleaner-filter-sep {
+  color: var(--hair);
+  margin: 0 4px;
+}
+
+/* 候选表格 */
+.cleaner-table-wrap {
+  background: var(--s1);
+  border: 1px solid var(--hair);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+.cleaner-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.cleaner-table th {
+  text-align: left;
+  padding: 9px 12px;
+  background: var(--s2);
+  color: var(--tx3);
+  font-size: 12px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--hair);
+  position: sticky;
+  top: 0;
+}
+.cleaner-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--hair);
+  vertical-align: top;
+  font-size: 13px;
+}
+.cleaner-table tr:hover td {
+  background: rgba(255,255,255,.02);
+}
+.cleaner-table tr.row-safe td:first-child {
+  box-shadow: inset 3px 0 0 var(--ok);
+}
+.cleaner-table tr.row-review td:first-child {
+  box-shadow: inset 3px 0 0 var(--warn);
+}
+.cleaner-table tr.row-caution td:first-child {
+  box-shadow: inset 3px 0 0 var(--err);
+}
+.cleaner-badge {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.cleaner-badge.safe { background: rgba(16,185,129,.15); color: var(--ok); }
+.cleaner-badge.review { background: rgba(255,180,84,.15); color: var(--warn); }
+.cleaner-badge.caution { background: rgba(255,138,138,.15); color: var(--err); }
+
+.cleaner-drvtag {
+  display: inline-block;
+  background: var(--acc-soft);
+  color: var(--acc-tx);
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-size: 10.5px;
+  font-weight: 700;
+  margin-right: 6px;
+}
+.cleaner-size {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  white-space: nowrap;
+  text-align: right;
+  color: var(--tx);
+}
+.cleaner-title {
+  font-weight: 600;
+  color: var(--tx);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.cleaner-path {
+  color: var(--tx3);
+  font-size: 11.5px;
+  word-break: break-all;
+  font-family: Consolas, monospace;
+  margin-top: 2px;
+}
+.cleaner-desc {
+  color: var(--tx2);
+  font-size: 11.5px;
+  margin-top: 2px;
+}
+.cleaner-chk {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--ok);
+  cursor: pointer;
+}
+
+/* 智能标签体系 */
+.cleaner-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 4px;
+  padding: 1px 7px;
+  white-space: nowrap;
+}
+.cleaner-tag-app {
+  background: var(--acc-soft);
+  color: var(--acc-tx);
+  border: 1px solid var(--acc);
+}
+.cleaner-tag-type {
+  background: var(--s2);
+  color: var(--tx2);
+  border: 1px solid var(--hair);
+}
+.cleaner-tag-group {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--acc);
+  background: var(--acc-soft);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+.cleaner-type-icon {
+  font-size: 12px;
+  opacity: 0.8;
+  margin-left: 2px;
+}
+
+/* 智能溯源高亮提示块 (Smart Insight) */
+.cleaner-insight {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  background: color-mix(in srgb, var(--cyan) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--cyan) 30%, transparent);
+  border-radius: 6px;
+  padding: 6px 10px;
+  margin-top: 6px;
+  font-size: 11.5px;
+  color: var(--cyan);
+  line-height: 1.45;
+}
+.cleaner-insight i {
+  font-size: 14px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+/* 智能用途/影响/建议元数据条 */
+.cleaner-smart-meta {
+  margin-top: 6px;
+  padding: 7px 11px;
+  background: var(--s2);
+  border: 1px solid var(--hair);
+  border-radius: 6px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.cleaner-meta-row {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+}
+.cleaner-meta-lbl {
+  color: var(--tx3);
+  font-weight: 600;
+  flex-shrink: 0;
+  width: 42px;
+}
+.cleaner-meta-val {
+  color: var(--tx2);
+  flex: 1;
+}
+.cleaner-meta-val.highlight {
+  color: var(--ok);
+  font-weight: 600;
+}
+.cleaner-filter-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--s1);
+  border: 1px solid var(--hair);
+  border-radius: 6px;
+  padding: 6px 12px;
+  margin-bottom: 10px;
+  width: 100%;
+}
+.cleaner-filter-search input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--tx);
+  font-size: 12.5px;
+  flex: 1;
+}
+.cleaner-filter-search i {
+  color: var(--tx3);
+  font-size: 14px;
+}
+
+/* 大目录参考折叠框 */
+.cleaner-topdirs {
+  margin-top: 14px;
+  background: var(--s1);
+  border: 1px solid var(--hair);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+.cleaner-topdirs summary {
+  cursor: pointer;
+  color: var(--tx2);
+  font-size: 12.5px;
+  padding: 4px 0;
+  user-select: none;
+}
+.cleaner-topdirs-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 8px;
+  font-size: 12px;
+  border-bottom: 1px solid var(--hair);
+}
+.cleaner-topdirs-item:last-child {
+  border-bottom: none;
+}
+.cleaner-topdirs-item .p {
+  color: var(--tx3);
+  font-family: Consolas, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 75%;
+}
+
+/* 底部操作固定条 */
+.cleaner-actionbar {
+  position: sticky;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--s1);
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.06);
+  border: 1px solid var(--hair);
+  border-radius: 8px;
+  padding: 10px 16px;
+  margin-top: 16px;
+  display: none;
+  z-index: 20;
+}
+html.xy-glass-enabled .cleaner-actionbar {
+  background: color-mix(in srgb, var(--s1) var(--xy-card-opacity, 90%), transparent);
+  -webkit-backdrop-filter: blur(var(--xy-card-blur, 10px));
+  backdrop-filter: blur(var(--xy-card-blur, 10px));
+}
+.cleaner-actionbar-inner {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.cleaner-selinfo {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--tx);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.cleaner-selinfo b {
+  color: var(--ok);
+  font-size: 15px;
+  font-weight: 700;
+}
+.cleaner-spacer {
+  flex: 1;
+}
+
+/* 操作条按钮样式 */
+.cleaner-actionbar .btn-ghost {
+  background: var(--s2);
+  border: 1px solid var(--hair);
+  color: var(--tx);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 12px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all .15s ease;
+}
+.cleaner-actionbar .btn-ghost:hover {
+  background: var(--s3);
+  color: var(--tx);
+  border-color: var(--acc);
+}
+.cleaner-actionbar #cleanerBtnSelSafe {
+  color: var(--ok);
+  border-color: color-mix(in srgb, var(--ok) 35%, var(--hair));
+}
+.cleaner-actionbar #cleanerBtnSelSafe:hover {
+  background: var(--ok-soft);
+  border-color: var(--ok);
+}
+.cleaner-actionbar #cleanerBtnSelReview {
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 35%, var(--hair));
+}
+.cleaner-actionbar #cleanerBtnSelReview:hover {
+  background: rgba(255, 180, 84, 0.12);
+  border-color: var(--warn);
+}
+.cleaner-actionbar #cleanerBtnPreview {
+  color: var(--acc-tx);
+}
+.cleaner-actionbar #cleanerBtnPreview:hover {
+  background: var(--acc-soft);
+  border-color: var(--acc);
+}
+
+/* 执行清理危险操作按钮 */
+.btn-danger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  background: var(--err);
+  color: #fff !important;
+  font-size: 12.5px;
+  font-weight: 600;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: filter .15s, transform .1s;
+}
+.btn-danger:hover {
+  filter: brightness(1.1);
+}
+.btn-danger:active {
+  transform: scale(.98);
+}
+.btn-danger.sm {
+  padding: 6px 14px;
+  font-size: 12px;
+  border-radius: 6px;
+}
+
+/* 清理报告卡片 */
+.cleaner-report {
+  background: var(--s1);
+  border: 1px solid var(--hair);
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-top: 16px;
+  display: none;
+}
+.cleaner-report.show {
+  display: block;
+}
+.cleaner-report h3 {
+  margin-bottom: 10px;
+  font-size: 14px;
+  color: var(--tx);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.cleaner-report pre {
+  background: var(--bg);
+  border: 1px solid var(--hair);
+  border-radius: 6px;
+  padding: 10px;
+  font-size: 12px;
+  font-family: Consolas, monospace;
+  overflow-x: auto;
+  color: var(--tx2);
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+/* 空状态 */
+.cleaner-empty {
+  text-align: center;
+  color: var(--tx3);
+  padding: 60px 20px;
+  font-size: 14px;
+}
