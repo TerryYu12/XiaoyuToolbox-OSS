@@ -29,6 +29,7 @@ import urllib.request
 import stats_api
 import ai_hub
 import translate_backend
+import dark_frame
 import clipboard_history
 import clash_node_check
 import clash_inspector
