@@ -3458,6 +3458,21 @@
   }
 
   async function loadData() {
+        // 检查更新按钮与顶部提示绑定
+    const btnCheckUpdate = document.getElementById("btnCheckUpdateManual");
+    if (btnCheckUpdate) {
+      btnCheckUpdate.addEventListener("click", () => checkAppUpdate(true));
+    }
+    const topUpdateBadge = document.getElementById("updateAvailBadge");
+    if (topUpdateBadge) {
+      topUpdateBadge.addEventListener("click", () => {
+        location.hash = "#/status";
+        setTimeout(() => {
+          document.getElementById("cardAppUpdate")?.scrollIntoView({ behavior: "smooth" });
+        }, 150);
+      });
+    }
+
     const refreshBtn = document.getElementById('refreshBtn');
     if (refreshBtn) refreshBtn.classList.add('spinning');
     // 仪表盘刷新按钮同显忙碌态：改时间范围时也有反馈（此前点完像没反应）
@@ -5045,12 +5060,97 @@
   // --- 6. 工具箱主页与功能卡片动态加载 ---
   let toolboxStatusCache = null;
 
-  function renderAppVersion(version) {
+    function renderAppVersion(version) {
     const el = document.getElementById('appVersionBadge');
     if (!el || !version) return;
-    const clean = String(version).trim().replace(/^v/i, '');
+    const clean = String(version).trim().replace(/^v/i, "");
     if (!clean) return;
-    el.textContent = 'v' + clean;
+    el.textContent = "v" + clean;
+  }
+
+  // --- 自动检查更新 ---
+  let appUpdateCache = null;
+
+  async function checkAppUpdate(force = false) {
+    const ico = document.getElementById("icoCheckUpdate");
+    const statusBadge = document.getElementById("updateStatusBadge");
+
+    if (force && ico) ico.classList.add("ph-spin");
+    if (statusBadge) {
+      statusBadge.className = "update-status-badge checking";
+      statusBadge.textContent = "正在检查...";
+    }
+
+    try {
+      const resp = await fetch("/api/toolbox/check_update" + (force ? "?force=1" : ""), { cache: "no-store" });
+      if (resp.ok) {
+        const data = await resp.json();
+        appUpdateCache = data;
+        renderUpdateUI(data);
+        return;
+      }
+    } catch (e) {
+      console.warn("Check update request failed:", e);
+    } finally {
+      if (ico) ico.classList.remove("ph-spin");
+    }
+
+    if (statusBadge) {
+      statusBadge.className = "update-status-badge error";
+      statusBadge.textContent = "检查失败";
+    }
+  }
+
+  function renderUpdateUI(d) {
+    if (!d) return;
+    const curVerEl = document.getElementById("updateCurVer");
+    const latestVerEl = document.getElementById("updateLatestVer");
+    const statusBadge = document.getElementById("updateStatusBadge");
+    const timeEl = document.getElementById("updateCheckedTime");
+    const btnDownload = document.getElementById("btnGoDownload");
+    const notesBox = document.getElementById("updateNotesBox");
+    const notesContent = document.getElementById("updateNotesContent");
+    const topBadge = document.getElementById("updateAvailBadge");
+    const topText = document.getElementById("updateAvailText");
+
+    if (curVerEl) curVerEl.textContent = d.current_version ? ("v" + d.current_version) : "--";
+    if (latestVerEl) latestVerEl.textContent = d.latest_version ? ("v" + d.latest_version) : "--";
+    if (timeEl && d.checked_at) {
+      const dt = new Date(d.checked_at * 1000);
+      timeEl.textContent = "检查时间: " + dt.toLocaleTimeString();
+    }
+
+    if (d.ok && d.has_update) {
+      if (statusBadge) {
+        statusBadge.className = "update-status-badge has-update";
+        statusBadge.textContent = "发现新版本 v" + d.latest_version;
+      }
+      if (topBadge) {
+        topBadge.style.display = "inline-flex";
+        if (topText) topText.textContent = "新版 v" + d.latest_version;
+      }
+      if (btnDownload) {
+        btnDownload.href = d.download_url || d.release_url || "https://github.com/TerryYu12/XiaoyuToolbox-OSS/releases/latest";
+        btnDownload.style.display = "inline-flex";
+      }
+      if (d.release_notes && notesBox && notesContent) {
+        notesBox.style.display = "block";
+        notesContent.textContent = d.release_notes;
+      }
+    } else if (d.ok && !d.has_update) {
+      if (statusBadge) {
+        statusBadge.className = "update-status-badge latest";
+        statusBadge.textContent = d.message || "已是最新版本";
+      }
+      if (topBadge) topBadge.style.display = "none";
+      if (btnDownload) btnDownload.style.display = "none";
+      if (notesBox) notesBox.style.display = "none";
+    } else {
+      if (statusBadge) {
+        statusBadge.className = "update-status-badge error";
+        statusBadge.textContent = d.error || "检查失败";
+      }
+    }
   }
 
   async function fetchToolboxStatus() {
@@ -10810,6 +10910,7 @@
     }
     applyNavFilter();
     renderModuleManager();
+      if (appUpdateCache) renderUpdateUI(appUpdateCache);
     if (!moduleAllowsHash(location.hash || '#/dashboard')) location.replace('#/dashboard');
   }
   function renderModuleManager() {
@@ -11753,6 +11854,7 @@
     handleHashRoute();
     window.addEventListener('hashchange', handleHashRoute);
     // 5. 前端热更新轮询（先记一次基准版本，之后变化才触发重载）
+    setTimeout(() => { checkAppUpdate(false); }, 2000);
     pollWebuiVersion();
     setInterval(pollWebuiVersion, 10000);
     zpStartTimer();

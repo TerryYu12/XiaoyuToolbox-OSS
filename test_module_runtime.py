@@ -23,7 +23,7 @@ FAIL = []
 
 def check(name, cond, detail=""):
     (PASS if cond else FAIL).append(name)
-    print(f"  {'✓' if cond else '✗ FAIL'} {name} {detail}")
+    print(f"  {'[OK]' if cond else '[FAIL]'} {name} {detail}")
 
 
 def _sandbox_appearance(tmp):

@@ -25,7 +25,8 @@
     <header class="topbar">
       <span class="logo" style="background:none;overflow:hidden"><img src="icons/app_logo.svg" width="22" height="22" alt="" style="display:block;border-radius:5px"></span>
       <span class="app-name">小宇工具箱</span>
-      <span id="appVersionBadge" class="ver-tag" title="当前工具箱版本">v2.2.3</span>
+      <span id="appVersionBadge" class="ver-tag" title="当前工具箱版本">v2.5.7</span>
+      <span id="updateAvailBadge" class="update-badge" style="display:none;" title="发现新版本，点击查看"><i class="ph ph-sparkle-fill"></i><span id="updateAvailText">新版可用</span></span>
       <span class="port-tag"><i class="ph ph-circle-fill"></i>127.0.0.1:8790</span>
       <span class="tb-space"></span>
       <span id="dataSourceBadge" class="source-badge fallback">
@@ -1353,6 +1354,36 @@
             <div>
               <h2>设置</h2>
               <p class="ph-desc">外观偏好即时生效并保存到本机；下方是本地引擎、OCR、统计网关与各数据源的健康总览。</p>
+            </div>
+          </div>
+
+          <!-- 版本与更新 -->
+          <div class="card" id="cardAppUpdate">
+            <div class="card-title"><i class="ph ph-arrow-circle-up"></i>版本与更新</div>
+            <div class="update-card-body">
+              <div class="update-info-row">
+                <div class="update-info-item">
+                  <span class="update-lbl">当前版本</span>
+                  <span class="update-val font-mono" id="updateCurVer">--</span>
+                </div>
+                <div class="update-info-item">
+                  <span class="update-lbl">最新版本</span>
+                  <span class="update-val font-mono" id="updateLatestVer">--</span>
+                </div>
+                <div class="update-info-item">
+                  <span class="update-lbl">状态</span>
+                  <span class="update-status-badge" id="updateStatusBadge">未检查</span>
+                </div>
+              </div>
+              <div class="update-actions-row">
+                <button class="btn-hud-secondary" id="btnCheckUpdateManual"><i class="ph ph-arrows-clockwise" id="icoCheckUpdate"></i>检查更新</button>
+                <a class="btn-hud-primary" id="btnGoDownload" href="#" target="_blank" style="display:none;"><i class="ph ph-download-simple"></i>前往 GitHub Release 下载</a>
+                <span class="update-checked-time" id="updateCheckedTime"></span>
+              </div>
+              <div class="update-notes-box" id="updateNotesBox" style="display:none;">
+                <div class="update-notes-title"><i class="ph ph-file-text"></i>更新日志</div>
+                <div class="update-notes-content" id="updateNotesContent"></div>
+              </div>
             </div>
           </div>
 

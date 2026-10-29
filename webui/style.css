@@ -2597,3 +2597,47 @@ button.cn-chip, .cn-btn { -webkit-user-select: none; user-select: none; }
 
 
 
+
+/* ---- 自动更新与版本提示 ---- */
+.topbar .update-badge {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+  color: #fff; background: var(--ok, #10b981);
+  border: 1px solid color-mix(in srgb, var(--ok, #10b981) 40%, transparent);
+  padding: 1px 7px; border-radius: 5px;
+  line-height: 1.4; letter-spacing: .2px;
+  cursor: pointer; display: inline-flex; align-items: center; gap: 4px;
+  animation: pulse-badge 2s infinite ease-in-out;
+}
+@keyframes pulse-badge {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.85; transform: scale(1.03); }
+}
+.update-card-body { display: flex; flex-direction: column; gap: 14px; margin-top: 8px; }
+.update-info-row { display: flex; flex-wrap: wrap; gap: 16px; }
+.update-info-item {
+  display: flex; flex-direction: column; gap: 4px; min-width: 120px;
+  padding: 8px 12px; background: var(--s1, rgba(255,255,255,0.03));
+  border: 1px solid var(--hair, rgba(255,255,255,0.08)); border-radius: 8px;
+}
+.update-lbl { font-size: 11px; color: var(--tx3); }
+.update-val { font-size: 13.5px; font-weight: 600; color: var(--tx1); }
+.update-status-badge {
+  font-size: 11px; font-weight: 600; padding: 2px 6px; border-radius: 4px;
+  display: inline-block; width: fit-content;
+}
+.update-status-badge.latest { background: rgba(16, 185, 129, 0.15); color: #10b981; }
+.update-status-badge.has-update { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
+.update-status-badge.checking { background: rgba(99, 102, 241, 0.15); color: #6366f1; }
+.update-status-badge.error { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+.update-actions-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.update-checked-time { font-size: 11.5px; color: var(--tx3); }
+.update-notes-box {
+  margin-top: 6px; padding: 12px; border-radius: 8px;
+  background: var(--s2, rgba(255,255,255,0.02));
+  border: 1px solid var(--hair, rgba(255,255,255,0.06));
+}
+.update-notes-title { font-size: 12px; font-weight: 600; color: var(--tx2); margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
+.update-notes-content {
+  font-size: 12px; line-height: 1.6; color: var(--tx2);
+  white-space: pre-wrap; word-break: break-word; max-height: 200px; overflow-y: auto;
+}

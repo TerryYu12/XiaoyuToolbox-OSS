@@ -321,6 +321,141 @@ def app_version():
     return "unknown"
 
 
+# -------------------------------------------------- 版本与更新检查
+_UPDATE_CACHE = {"ts": 0.0, "data": None}
+_UPDATE_CACHE_TTL = 3600  # 1 小时缓存
+_UPDATE_LOCK = threading.Lock()
+GITHUB_RELEASE_API = "https://api.github.com/repos/TerryYu12/XiaoyuToolbox-OSS/releases/latest"
+
+
+def _parse_version(v_str):
+    if not v_str or not isinstance(v_str, str):
+        return ()
+    s = v_str.strip().lstrip("vV")
+    parts = []
+    for seg in s.split("."):
+        num = ""
+        for ch in seg:
+            if ch.isdigit():
+                num += ch
+            else:
+                break
+        if num:
+            parts.append(int(num))
+    return tuple(parts)
+
+
+def check_app_update(force=False):
+    """检查小宇工具箱开源版 GitHub Releases 最新版本。
+
+    带 1 小时内存缓存，避免频繁请求触发 GitHub API 速率限制 (60次/小时)。
+    force=True 时强制绕过缓存即时请求。
+    """
+    now = time.time()
+    cur_ver = app_version()
+    with _UPDATE_LOCK:
+        if not force and _UPDATE_CACHE["data"] is not None:
+            if now - _UPDATE_CACHE["ts"] < _UPDATE_CACHE_TTL:
+                return _UPDATE_CACHE["data"]
+
+    req_headers = {
+        "User-Agent": f"XiaoyuToolbox/{cur_ver}",
+        "Accept": "application/vnd.github.v3+json",
+    }
+    req = urllib.request.Request(GITHUB_RELEASE_API, headers=req_headers)
+
+    proxy_candidates = [None]
+    for port in (7890, 7897, 10808, 10809):
+        proxy_candidates.append({
+            "http": f"http://127.0.0.1:{port}",
+            "https": f"http://127.0.0.1:{port}",
+        })
+
+    raw_bytes = None
+    last_exc = None
+    for p in proxy_candidates:
+        try:
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler(p)) if p else urllib.request.build_opener()
+            with opener.open(req, timeout=4) as resp:
+                raw_bytes = resp.read()
+                break
+        except urllib.error.HTTPError as e:
+            last_exc = e
+            break
+        except Exception as e:
+            last_exc = e
+            continue
+
+    try:
+        if raw_bytes is None:
+            if isinstance(last_exc, urllib.error.HTTPError):
+                raise last_exc
+            raise last_exc or RuntimeError("无法连接到 GitHub 服务")
+
+        data = json.loads(raw_bytes.decode("utf-8"))
+        tag_name = data.get("tag_name", "")
+        latest_ver = tag_name.lstrip("vV") if tag_name else "unknown"
+        cur_tuple = _parse_version(cur_ver)
+        latest_tuple = _parse_version(latest_ver)
+        has_update = bool(latest_tuple and cur_tuple and latest_tuple > cur_tuple)
+
+        download_url = data.get("html_url", "")
+        for asset in data.get("assets", []):
+            name = asset.get("name", "").lower()
+            if name.endswith((".zip", ".exe")):
+                download_url = asset.get("browser_download_url") or download_url
+                break
+
+        res = {
+            "ok": True,
+            "has_update": has_update,
+            "current_version": cur_ver,
+            "latest_version": latest_ver,
+            "release_title": data.get("name") or tag_name,
+            "release_notes": data.get("body", ""),
+            "release_url": data.get("html_url", ""),
+            "download_url": download_url,
+            "published_at": data.get("published_at", ""),
+            "checked_at": now,
+        }
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            res = {
+                "ok": True,
+                "has_update": False,
+                "current_version": cur_ver,
+                "latest_version": cur_ver,
+                "message": "当前已是最新版本（暂无已发布的 Release）",
+                "checked_at": now,
+            }
+        elif e.code == 403:
+            res = {
+                "ok": False,
+                "error": "GitHub API 访问受限（请求超频），请稍后再试",
+                "current_version": cur_ver,
+                "checked_at": now,
+            }
+        else:
+            res = {
+                "ok": False,
+                "error": f"检查更新失败 (HTTP {e.code}): {e.reason}",
+                "current_version": cur_ver,
+                "checked_at": now,
+            }
+    except Exception as e:  # noqa: BLE001
+        res = {
+            "ok": False,
+            "error": f"无法连接到更新服务: {str(e)[:80]}",
+            "current_version": cur_ver,
+            "checked_at": now,
+        }
+
+    with _UPDATE_LOCK:
+        _UPDATE_CACHE["ts"] = now
+        _UPDATE_CACHE["data"] = res
+    return res
+
+
 MIME = {
     ".html": "text/html; charset=utf-8",
     ".css": "text/css; charset=utf-8",
@@ -1064,6 +1199,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(toolbox_status())
             if p == "/api/toolbox/features":
                 return self._json({"features": toolbox_features()})
+            if p == "/api/toolbox/check_update":
+                force = q.get("force", ["0"])[0] in ("1", "true", "True")
+                return self._json(check_app_update(force=force))
 
             # === 原生窗口跨进程呼起接口 ===
             if p == "/api/window/theme":
