@@ -589,27 +589,56 @@
   // 长按卡片 600ms 进入编辑：右/下边缘拉动调大小、× 删除、＋ 添加、完成退出。
   // ============================================================
   const ZP_CARD_DEFS = {
-    quota: { title: '额度监控', w: 12, h: 6 },
-    hero: { title: '近 10 分钟速率', w: 12, h: 4 },
-    'kpi-tokens': { title: '总 Token', w: 6, h: 3 },
-    'kpi-cost': { title: '预估费用', w: 6, h: 3 },
-    'kpi-inout': { title: '新输入 / 输出', w: 6, h: 3 },
-    'kpi-hit': { title: '缓存命中率', w: 6, h: 3 },
-    agents: { title: 'Agent 卡行', w: 12, h: 9 },
-    area: { title: '堆叠面积图', w: 12, h: 8 },
-    ripple: { title: '请求波', w: 9, h: 5 },
-    budget: { title: '预算', w: 3, h: 5 },
+    hero: { title: '近 10 分钟速率', w: 4, h: 3 },
+    quota: { title: '额度监控', w: 4, h: 3 },
+    'kpi-tokens': { title: '总 Token', w: 2, h: 3 },
+    'kpi-cost': { title: '预估费用', w: 3, h: 3 },
+    'kpi-inout': { title: '新输入 / 输出', w: 2, h: 3 },
+    'kpi-hit': { title: '缓存命中率', w: 2, h: 3 },
+    agents: { title: 'Agent 卡行', w: 5, h: 10 },
+    area: { title: '堆叠面积图', w: 12, h: 6 },
+    ripple: { title: '请求波', w: 12, h: 5, defaultHidden: true },
+    budget: { title: '预算', w: 3, h: 4 },
     'rate-vt': { title: '请求速率（v-t图）', w: 12, h: 6 },
-    stream: { title: '请求流', w: 12, h: 8 },
-    models: { title: '模型占比', w: 12, h: 9 },
-    // 2026-10-03 新增：时钟/天气/系统监控默认上板；图片槽默认收进 + 号菜单
-    clock: { title: '时钟', w: 4, h: 3 },
-    weather: { title: '天气', w: 4, h: 4 },
-    sysmon: { title: '系统监控', w: 4, h: 4 },
+    stream: { title: '请求流', w: 12, h: 6 },
+    models: { title: '模型占比', w: 7, h: 14 },
+    clock: { title: '时钟', w: 2, h: 3 },
+    weather: { title: '天气', w: 5, h: 3 },
+    sysmon: { title: '系统监控', w: 2, h: 4 },
     'img-1': { title: '自定义图片 1', w: 4, h: 4, defaultHidden: true },
     'img-2': { title: '自定义图片 2', w: 4, h: 4, defaultHidden: true },
     'img-3': { title: '自定义图片 3', w: 4, h: 4, defaultHidden: true },
     'img-4': { title: '自定义图片 4', w: 4, h: 4, defaultHidden: true }
+  };
+
+  const ZP_DEFAULT_PRESET_NAME = '默认方案';
+  const ZP_DEFAULT_LAYOUT = {
+    order: [
+      'hero', 'quota', 'kpi-tokens', 'kpi-hit', 'agents', 'kpi-cost',
+      'kpi-inout', 'clock', 'models', 'weather', 'sysmon', 'budget',
+      'area', 'stream', 'rate-vt'
+    ],
+    size: {
+      quota: [4, 3],
+      hero: [4, 3],
+      'kpi-tokens': [2, 3],
+      'kpi-cost': [3, 3],
+      'kpi-inout': [2, 3],
+      'kpi-hit': [2, 3],
+      agents: [5, 10],
+      ripple: [12, 5],
+      area: [12, 6],
+      budget: [3, 4],
+      stream: [12, 6],
+      models: [7, 14],
+      clock: [2, 3],
+      weather: [5, 3],
+      sysmon: [2, 4],
+      'rate-vt': [12, 6]
+    },
+    hidden: ['img-3', 'img-4', 'img-2', 'img-1', 'ripple'],
+    agentsOrder: ['codex', 'hermes:default', 'claude-desktop', 'antigravity', 'zcode', 'dsh'],
+    agentsHidden: []
   };
   const ZP_LAYOUT_KEY = 'zpDashLayoutV1';
   // 新卡（时钟/天气/系统监控/自定义图片）的逐卡配置：图片卡的图片 dataURL、
@@ -694,7 +723,10 @@
       ZP_GRID.remoteReady = true;
       const cfg = data.config || {};
       ZP_GRID.presets = cfg.dashboardPresets || {};
-      ZP_GRID.activePreset = cfg.dashboardActivePreset || null;
+      if (!ZP_GRID.presets[ZP_DEFAULT_PRESET_NAME]) {
+        ZP_GRID.presets = Object.assign({ [ZP_DEFAULT_PRESET_NAME]: JSON.parse(JSON.stringify(ZP_DEFAULT_LAYOUT)) }, ZP_GRID.presets);
+      }
+      ZP_GRID.activePreset = cfg.dashboardActivePreset || (ZP_GRID.presets[ZP_DEFAULT_PRESET_NAME] ? ZP_DEFAULT_PRESET_NAME : null);
       // 图片卡图片 / 天气城市等逐卡配置：远端权威，先于布局应用（渲染不依赖布局）
       zpCardsApply(cfg.dashboardCards || {});
       const remote = cfg.dashboardLayout || null;
@@ -781,17 +813,20 @@
       nodes[n.getAttribute('data-card-id')] = n;
     });
     const allIds = Object.keys(ZP_CARD_DEFS).filter(id => nodes[id]);
-    ZP_GRID.order = (saved && saved.order) ? saved.order.filter(id => nodes[id]) : [];
-    ZP_GRID.hidden = (saved && Array.isArray(saved.hidden))
-      ? saved.hidden.filter(id => nodes[id]) : [];
-    // 无存档位置的卡：defaultHidden（图片槽）收进 + 号菜单，其余排到布局尾部。
-    // 这样老用户的布局不被新卡打乱顺序，新卡也保底可见/可从菜单添加。
+    const initLayout = (saved && saved.order) ? saved : ZP_DEFAULT_LAYOUT;
+    ZP_GRID.order = (initLayout && initLayout.order) ? initLayout.order.filter(id => nodes[id]) : [];
+    ZP_GRID.hidden = (initLayout && Array.isArray(initLayout.hidden))
+      ? initLayout.hidden.filter(id => nodes[id]) : [];
     allIds.forEach(id => {
       if (ZP_GRID.order.includes(id) || ZP_GRID.hidden.includes(id)) return;
       if (ZP_CARD_DEFS[id] && ZP_CARD_DEFS[id].defaultHidden) ZP_GRID.hidden.push(id);
       else ZP_GRID.order.push(id);
     });
-    ZP_GRID.size = (saved && saved.size) ? saved.size : {};
+    ZP_GRID.size = (initLayout && initLayout.size) ? Object.assign({}, initLayout.size) : {};
+    if (!saved) {
+      ZP_GRID.agOrder = Array.isArray(initLayout.agentsOrder) ? [...initLayout.agentsOrder] : null;
+      ZP_GRID.agHidden = Array.isArray(initLayout.agentsHidden) ? [...initLayout.agentsHidden] : [];
+    }
     // 摘掉隐藏卡（保留引用供 + 号恢复）
     ZP_GRID.hidden.forEach(id => {
       if (nodes[id]) { ZP_GRID.detached[id] = nodes[id]; nodes[id].remove(); }
@@ -1049,6 +1084,28 @@
       });
     });
     menu.appendChild(save);
+
+    const defBtn = document.createElement('div');
+    defBtn.className = 'zp-add-item';
+    defBtn.innerHTML = '<span><b>设当前布局为默认方案</b></span><span class="dim">覆盖</span>';
+    defBtn.addEventListener('click', () => {
+      ZP_GRID.presets[ZP_DEFAULT_PRESET_NAME] = zpLayoutCurrent();
+      ZP_GRID.activePreset = ZP_DEFAULT_PRESET_NAME;
+      zpLayoutSave();
+      menu.remove();
+    });
+    menu.appendChild(defBtn);
+
+    const resetBtn = document.createElement('div');
+    resetBtn.className = 'zp-add-item';
+    resetBtn.innerHTML = '<span>重置为官方内置方案</span><span class="dim">重置</span>';
+    resetBtn.addEventListener('click', () => {
+      ZP_GRID.presets[ZP_DEFAULT_PRESET_NAME] = JSON.parse(JSON.stringify(ZP_DEFAULT_LAYOUT));
+      zpApplyPreset(ZP_DEFAULT_PRESET_NAME);
+      menu.remove();
+    });
+    menu.appendChild(resetBtn);
+
     zpEl('pgDash').appendChild(menu);
   }
 
