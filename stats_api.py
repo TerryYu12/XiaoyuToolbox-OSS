@@ -1826,8 +1826,10 @@ def _codex_scan(since_ts=None):
         except OSError:
             continue
         live.add(p)
-        if since_ts and st.st_mtime < since_ts:
-            continue            # 窗口外：不解析（缓存留着，切回大窗口还能复用）
+        # 宽放 2 天初筛：Windows 上 Codex 长会话可能保持初始 mtime（如昨夜 23:55 创建、跑入今日凌晨），
+        # 若严格按 since_ts 过滤会把跨夜/跨自然日的今日用量整盘漏掉；留给 _codex_window_ratio 精确切分。
+        if since_ts and st.st_mtime < (since_ts - 172800):
+            continue
         key = (st.st_size, int(st.st_mtime))
         with _CODEX_LOCK:
             hit = cache.get(p)
@@ -1839,8 +1841,13 @@ def _codex_scan(since_ts=None):
     with _CODEX_LOCK:
         for p in [k for k in cache if k not in live]:
             cache.pop(p, None)   # 已删除的文件不留缓存
-        return {p: item for p, item in cache.items()
-                if not since_ts or item[0][1] >= since_ts}
+        return {
+            p: item for p, item in cache.items()
+            if not since_ts or (
+                any(ev[0] >= since_ts for ev in item[3])
+                if item[3] else item[0][1] >= since_ts
+            )
+        }
 
 
 def _codex_window_ratio(events, since_ts):
