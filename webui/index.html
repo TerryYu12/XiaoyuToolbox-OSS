@@ -63,6 +63,7 @@
         <a title="模型对比" href="#/compare" class="nav-item" data-route="#/ai-compare"><i class="ph ph-scales"></i><span>模型对比</span></a>
         <div class="nav-group" data-navgroup="agent">Agent 专区</div>
         <a title="OpenAI 专区" href="#/agent/codex" class="nav-item" data-route="#/agent/codex"><i class="nav-letter" aria-hidden="true">O</i><span>OpenAI 专区</span></a>
+        <a title="Antigravity 专区" href="#/agent/antigravity" class="nav-item" data-route="#/agent/antigravity"><i class="nav-letter duo" aria-hidden="true">AG</i><span>Antigravity 专区</span></a>
         <div class="nav-group" data-navgroup="games">游戏专区</div>
         <a title="Epic 喜加一" href="#/games" class="nav-item" data-route="#/games"><i class="ph ph-game-controller"></i><span>Epic喜加一</span></a>
         <div class="nav-group" data-navgroup="tools">实用工具</div>
@@ -641,6 +642,152 @@
                   </tr>
                 </thead>
                 <tbody id="codexProfilesBody">
+                  <tr><td colspan="7" style="padding:16px;text-align:center;opacity:0.6;">正在加载账号矩阵…</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ Antigravity 专区 (Antigravity Switcher) ============ -->
+        <section class="page" id="pgAntigravity">
+          <div class="page-head">
+            <span class="ph-ico"><i class="ph ph-planet"></i></span>
+            <div>
+              <h2>Antigravity 专区</h2>
+              <p class="ph-desc">Google Antigravity 桌面端多账号独立登录态管家，一键极速冷切换、刷新令牌 (RT) 快速导入与实时配额监控。</p>
+            </div>
+            <div class="ph-acts">
+              <button class="btn-ghost" id="btnAgRefresh" title="刷新 Antigravity 状态与实时配额"><i class="ph ph-arrows-clockwise"></i><span>刷新状态</span></button>
+              <button class="btn-hud-primary" id="btnAgSaveCurrent" title="将当前客户端已登录态存为新预设"><i class="ph ph-floppy-disk"></i><span>存当前登录为预设</span></button>
+              <button class="btn-hud-secondary" id="btnAgOpenAddModal" title="录入新账号或导入 RT 刷新令牌"><i class="ph ph-plus"></i><span>添加预设账号</span></button>
+            </div>
+          </div>
+
+          <div class="hud-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+            <!-- 当前活跃账号卡片 -->
+            <div class="hud-card" style="padding:18px;border-radius:12px;background:var(--bg-card, rgba(255,255,255,0.03));border:1px solid var(--border-color, rgba(255,255,255,0.08));display:flex;flex-direction:column;justify-content:space-between;">
+              <div>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                  <h3 style="margin:0;font-size:16px;font-weight:600;"><i class="ph ph-user-check" style="margin-right:6px;color:#38bdf8;"></i>当前活跃账号</h3>
+                  <div style="display:flex;gap:6px;align-items:center;">
+                    <span class="hud-badge online" id="agProcessBadge">检测中</span>
+                    <span class="hud-badge online" id="agActiveBadge">活跃中</span>
+                  </div>
+                </div>
+                <div style="font-size:14px;line-height:1.8;">
+                  <div><strong>当前邮箱：</strong><span id="agActiveEmail" style="color:#38bdf8;font-weight:600;">读取中…</span></div>
+                  <div><strong>认证方式：</strong><span id="agActiveAuthMethod">--</span></div>
+                  <div><strong>Token 状态：</strong><span id="agActiveTokenExp">--</span></div>
+                  <div><strong>刷新令牌 (RT)：</strong><span id="agActiveRefresh">--</span></div>
+                </div>
+              </div>
+              <div style="margin-top:14px;padding-top:10px;border-top:1px solid var(--border-color, rgba(255,255,255,0.06));display:flex;gap:8px;">
+                <button class="btn-ghost sm" id="btnAgSaveActiveInline" style="font-size:12px;flex:1;"><i class="ph ph-bookmark-simple"></i> 存入账号库</button>
+                <button class="btn-ghost sm" id="btnAgRestartClient" style="font-size:12px;" title="优雅重启 Antigravity 客户端"><i class="ph ph-arrows-clockwise"></i> 重启 IDE</button>
+              </div>
+            </div>
+
+            <!-- 一键快速切换操作区 -->
+            <div class="hud-card" style="padding:18px;border-radius:12px;background:var(--bg-card, rgba(255,255,255,0.03));border:1px solid var(--border-color, rgba(255,255,255,0.08));">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                <h3 style="margin:0;font-size:16px;font-weight:600;"><i class="ph ph-lightning" style="margin-right:6px;color:#f59e0b;"></i>一键极速切换</h3>
+                <span style="font-size:12px;opacity:0.7;">自动回写最新凭据 + 冷启动</span>
+              </div>
+              <div id="agQuickSwitchList" style="display:flex;flex-direction:column;gap:8px;margin-top:10px;max-height:190px;overflow-y:auto;">
+                <div style="font-size:13px;opacity:0.6;padding:12px;text-align:center;">正在读取账号矩阵…</div>
+              </div>
+              <div id="agSwitchResult" style="margin-top:10px;font-size:13px;color:#10b981;min-height:18px;"></div>
+            </div>
+          </div>
+
+          <!-- 实时官方配额 (Language Server Quota) -->
+          <div class="hud-card" style="padding:16px 18px;border-radius:12px;background:var(--bg-card, rgba(255,255,255,0.03));border:1px solid var(--border-color, rgba(255,255,255,0.08));margin-bottom:16px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+              <div>
+                <h3 style="margin:0;font-size:15px;font-weight:600;display:flex;align-items:center;gap:6px;">
+                  <i class="ph ph-chart-donut" style="color:#a855f7;font-size:17px;"></i>当前账号实时官方配额 (Language Server Quota)
+                </h3>
+                <p style="margin:4px 0 0;font-size:12px;opacity:0.7;">直连本地 Antigravity 语言服务器接口，实时读取 5 小时并发限制与周限额重置进度。</p>
+              </div>
+              <span id="agQuotaStatusText" style="font-size:12px;opacity:0.7;">检查配额中…</span>
+            </div>
+
+            <div id="agQuotaBarsGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+              <div style="padding:12px;text-align:center;font-size:13px;opacity:0.6;grid-column:1/-1;">正在读取本地语言服务器配额…</div>
+            </div>
+          </div>
+
+          <!-- 换号断点接力 · 快捷提示词 -->
+          <div class="hud-card" style="padding:16px 18px;border-radius:12px;background:var(--bg-card, rgba(255,255,255,0.03));border:1px solid var(--border-color, rgba(255,255,255,0.08));margin-bottom:16px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+              <div>
+                <h3 style="margin:0;font-size:15px;font-weight:600;display:flex;align-items:center;gap:6px;">
+                  <i class="ph ph-chat-circle-dots" style="color:#38bdf8;font-size:17px;"></i>换号断点接力 · 快捷提示词
+                </h3>
+                <p style="margin:4px 0 0;font-size:12px;opacity:0.7;">5h 额度打光中断时，先在 Antigravity 客户端停止生成并完成切号，再一键复制以下接力词：</p>
+              </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+              <!-- 玩法 1 卡片 -->
+              <div style="background:rgba(255,255,255,0.02);border:1px solid var(--border-color, rgba(255,255,255,0.06));border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;justify-content:space-between;">
+                <div>
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                    <span style="font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px;">
+                      <i class="ph ph-arrow-bend-down-right" style="color:#38bdf8;"></i>玩法 1：原对话断点续接
+                    </span>
+                    <span class="hud-badge online" style="font-size:11px;padding:2px 7px;">同 Thread 续聊</span>
+                  </div>
+                  <div style="font-size:12px;opacity:0.65;margin-bottom:8px;">直接在原未完成会话中发送，带着历史上下文继续吐字。</div>
+                  <div id="agPromptText1" style="background:rgba(0,0,0,0.28);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:10px 12px;font-size:12px;line-height:1.6;color:var(--text, #e2e8f0);user-select:all;word-break:break-all;cursor:pointer;" title="点击直接选中文本">刚才 5h 额度耗尽中断了，现在已切换新 Google 凭据，请检查当前代码状态（git status/diff），接着刚才没完成的部分继续。</div>
+                </div>
+                <div style="margin-top:10px;display:flex;justify-content:space-between;align-items:center;">
+                  <span style="font-size:11px;opacity:0.5;">可全选或点击按钮</span>
+                  <button class="btn-hud-primary sm" id="btnCopyAgPrompt1" type="button" style="font-size:12px;padding:5px 12px;"><i class="ph ph-copy"></i><span>一键复制指令</span></button>
+                </div>
+              </div>
+
+              <!-- 玩法 2 卡片 -->
+              <div style="background:rgba(255,255,255,0.02);border:1px solid var(--border-color, rgba(255,255,255,0.06));border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;justify-content:space-between;">
+                <div>
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                    <span style="font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px;">
+                      <i class="ph ph-sparkle" style="color:#10b981;"></i>玩法 2：新会话轻装承接
+                    </span>
+                    <span class="hud-badge" style="background:rgba(16,185,129,0.15);color:#10b981;border:1px solid rgba(16,185,129,0.3);font-size:11px;padding:2px 7px;">推荐 · 省 Token</span>
+                  </div>
+                  <div style="font-size:12px;opacity:0.65;margin-bottom:8px;">新开 Thread 让模型自主查 git 进度，理清断点，避免长上下文消耗。</div>
+                  <div id="agPromptText2" style="background:rgba(0,0,0,0.28);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:10px 12px;font-size:12px;line-height:1.6;color:var(--text, #e2e8f0);user-select:all;word-break:break-all;cursor:pointer;" title="点击直接选中文本">接力上一个任务：上个会话因 Antigravity 5h 额度耗尽中断。请先运行 git status 和 git diff 检查最新的未提交修改与工作区变更，理清当前代码实现进度后，接着把没完成的任务继续做完。</div>
+                </div>
+                <div style="margin-top:10px;display:flex;justify-content:space-between;align-items:center;">
+                  <span style="font-size:11px;opacity:0.5;">可全选或点击按钮</span>
+                  <button class="btn-hud-primary sm" id="btnCopyAgPrompt2" type="button" style="font-size:12px;padding:5px 12px;"><i class="ph ph-copy"></i><span>一键复制指令</span></button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 已登记账号库列表 -->
+          <div class="hud-card" style="padding:18px;border-radius:12px;background:var(--bg-card, rgba(255,255,255,0.03));border:1px solid var(--border-color, rgba(255,255,255,0.08));">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+              <h3 style="margin:0 0 0 0;font-size:15px;font-weight:600;"><i class="ph ph-database" style="margin-right:6px;"></i>已登记账号矩阵</h3>
+              <span style="font-size:12px;opacity:0.6;" id="agMatrixCount">共 0 个预设</span>
+            </div>
+            <div style="overflow-x:auto;">
+              <table style="width:100%;border-collapse:collapse;font-size:13px;text-align:left;">
+                <thead>
+                  <tr style="border-bottom:1px solid var(--border-color, rgba(255,255,255,0.08));opacity:0.7;">
+                    <th style="padding:8px 10px;width:130px;">排序</th>
+                    <th style="padding:8px 10px;">状态</th>
+                    <th style="padding:8px 10px;">预设名称</th>
+                    <th style="padding:8px 10px;">绑定邮箱</th>
+                    <th style="padding:8px 10px;">Token 时效</th>
+                    <th style="padding:8px 10px;">备注</th>
+                    <th style="padding:8px 10px;text-align:right;">操作</th>
+                  </tr>
+                </thead>
+                <tbody id="agProfilesBody">
                   <tr><td colspan="7" style="padding:16px;text-align:center;opacity:0.6;">正在加载账号矩阵…</td></tr>
                 </tbody>
               </table>
@@ -1524,6 +1671,70 @@
         <div style="display:flex;gap:8px;">
           <button class="btn-hud-secondary" id="btnCancelCodexModal">取消</button>
           <button class="btn-hud-primary" id="btnSubmitCodexModal">保存预设</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Antigravity 账号预设添加/导入弹窗 -->
+  <div class="hud-modal-overlay" id="agModalOverlay" style="display:none;">
+    <div class="hud-modal-card" style="max-width:560px;width:92%;">
+      <div class="modal-header">
+        <span class="modal-title" id="agModalTitle"><i class="ph ph-user-plus" style="margin-right:6px;"></i>添加 Antigravity 预设账号</span>
+        <button class="btn-close-modal" id="btnCloseAgModal">✕</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="modalAgProfileId">
+        <div class="modal-form-group">
+          <label class="modal-label">预设名称 <span style="color:#ef4444;">*</span></label>
+          <input type="text" id="modalAgName" class="hud-input" placeholder="例如：1号 / 主账号 / 工作备用号">
+        </div>
+
+        <div class="modal-form-group">
+          <label class="modal-label">导入与录入方式</label>
+          <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+            <button type="button" class="btn-hud-primary sm" id="btnAgFillFromCurrent"><i class="ph ph-download-simple"></i> 从当前客户端抓取</button>
+            <label class="btn-hud-secondary sm" style="cursor:pointer;margin:0;display:inline-flex;align-items:center;">
+              <i class="ph ph-file-arrow-up" style="margin-right:4px;"></i> 导入本地 JSON
+              <input type="file" id="modalAgFileInput" accept=".json" style="display:none;">
+            </label>
+          </div>
+        </div>
+
+        <!-- RT 刷新令牌输入区 -->
+        <div class="modal-form-group" id="agRtInputGroup">
+          <label class="modal-label">刷新令牌 (RT) <span style="font-size:11px;opacity:0.6;">（粘贴 1// 开头的 Google OAuth Refresh Token）</span></label>
+          <div style="display:flex;gap:8px;">
+            <input type="text" id="modalAgRtInput" class="hud-input font-mono" placeholder="1//0g..." style="font-size:12px;flex:1;">
+            <button type="button" class="btn-hud-primary sm" id="btnAgVerifyRt" style="white-space:nowrap;"><i class="ph ph-check"></i> 识别并换取</button>
+          </div>
+          <div style="font-size:11.5px;margin-top:4px;color:var(--tx2);">支持导入来自 Cockpit Tools 或 Google OAuth 授权产出的 1// 开头 RT，点击按钮可自动验证换取 Token。</div>
+        </div>
+
+        <!-- JSON 凭据输入区 -->
+        <div class="modal-form-group">
+          <label class="modal-label">凭据 JSON 数据 <span style="font-size:11px;opacity:0.6;">（由 RT 自动换取生成或直接粘贴完整凭据）</span></label>
+          <textarea id="modalAgCredContent" class="hud-input font-mono" rows="5" placeholder='{"token":{"access_token":"...","refresh_token":"1//..."},"id_token_email":"..."}' style="font-size:12px;"></textarea>
+        </div>
+
+        <div class="modal-form-group">
+          <label class="modal-label">备注信息（可选）</label>
+          <input type="text" id="modalAgNotes" class="hud-input" placeholder="例如：赠送额度账号、个人主力等">
+        </div>
+
+        <div id="modalAgParsedCard" style="display:none;padding:10px 12px;border-radius:8px;background:rgba(56,189,248,0.08);border:1px solid rgba(56,189,248,0.25);font-size:12px;margin-top:8px;">
+          <div><strong>识别邮箱：</strong><span id="modalAgParsedEmail" style="color:#38bdf8;font-weight:600;">--</span></div>
+          <div><strong>Token 时效：</strong><span id="modalAgParsedExp">--</span></div>
+          <div><strong>RT 状态：</strong><span id="modalAgParsedRt" style="color:#10b981;">已具备</span></div>
+        </div>
+      </div>
+      <div class="modal-footer" style="display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <button type="button" class="btn-ghost sm" id="btnAgDeleteFromModal" style="color:#ef4444;display:none;"><i class="ph ph-trash"></i> 删除此预设</button>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn-hud-secondary" id="btnCancelAgModal">取消</button>
+          <button class="btn-hud-primary" id="btnSubmitAgModal">保存预设</button>
         </div>
       </div>
     </div>

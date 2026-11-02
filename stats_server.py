@@ -1082,6 +1082,15 @@ class Handler(BaseHTTPRequestHandler):
                 import codex_switcher
                 return self._json(codex_switcher.get_codex_status())
 
+            # === Antigravity 专区（Google Antigravity 多账号切换与矩阵）===
+            if p == "/api/antigravity/status":
+                import antigravity_switcher
+                return self._json(antigravity_switcher.get_antigravity_status())
+
+            if p == "/api/antigravity/quota":
+                import antigravity_switcher
+                return self._json({"ok": True, "quota": antigravity_switcher.get_quota_summary()})
+
             if p == "/api/translate/config":
                 return self._json(translate_backend.load_trans_engine_config())
 
@@ -1358,6 +1367,55 @@ class Handler(BaseHTTPRequestHandler):
                 direction = body.get("direction") or "up"
                 import codex_switcher
                 return self._json(codex_switcher.move_codex_profile(pid, direction))
+
+            # === Antigravity 专区操作接口 ===
+            if u.path == "/api/antigravity/switch":
+                target = body.get("target") or ""
+                restart = body.get("restart", True)
+                import antigravity_switcher
+                return self._json(antigravity_switcher.switch_antigravity_account(target, restart=restart))
+
+            if u.path == "/api/antigravity/save_current":
+                name = body.get("name") or ""
+                profile_id = body.get("id")
+                notes = body.get("notes") or ""
+                import antigravity_switcher
+                return self._json(antigravity_switcher.save_current_as_profile(name, profile_id, notes=notes))
+
+            if u.path == "/api/antigravity/exchange_rt":
+                rt = body.get("rt") or ""
+                import antigravity_switcher
+                return self._json(antigravity_switcher.exchange_rt_for_tokens(rt))
+
+            if u.path == "/api/antigravity/profile/save":
+                name = body.get("name") or ""
+                credential = body.get("credential") or body.get("auth_content") or ""
+                profile_id = body.get("id")
+                notes = body.get("notes") or ""
+                import antigravity_switcher
+                return self._json(antigravity_switcher.add_or_update_profile(name, credential, profile_id, notes=notes))
+
+            if u.path == "/api/antigravity/profile/delete":
+                profile_id = body.get("id") or ""
+                import antigravity_switcher
+                return self._json(antigravity_switcher.delete_antigravity_profile(profile_id))
+
+            if u.path == "/api/antigravity/reorder":
+                order = body.get("order") or []
+                import antigravity_switcher
+                return self._json(antigravity_switcher.reorder_antigravity_profiles(order))
+
+            if u.path == "/api/antigravity/profile/move":
+                pid = body.get("id") or ""
+                direction = body.get("direction") or "up"
+                import antigravity_switcher
+                return self._json(antigravity_switcher.move_antigravity_profile(pid, direction))
+
+            if u.path == "/api/antigravity/restart":
+                import antigravity_switcher
+                antigravity_switcher.kill_antigravity_clients()
+                ok = antigravity_switcher.launch_antigravity_desktop()
+                return self._json({"ok": True, "launched": ok, "message": "Antigravity 客户端已重新启动" if ok else "已停止进程"})
 
             if u.path == "/api/clashnodes/config":
                 try:

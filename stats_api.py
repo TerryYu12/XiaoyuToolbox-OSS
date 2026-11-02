@@ -517,7 +517,6 @@ def ccs_models(since_ts=None, limit=20):
 # 这个接口把所有来源投影成一致的模型行。统计页面的总量与合并图只能消费这份
 # 归一化数据，避免顶部总量、图表分母和各来源小计走出三套算法。
 MODEL_SOURCE_DEFINITIONS = (
-    ("ccs", "CCS", "CC Switch 代理请求与会话同步汇总"),
     ("claude", "Claude 本机直读", "本机 ~/.claude/projects 逐条记账：CLI + 桌面端，已去重"),
     ("dsh", "DSH", "DeepSeek Harness 本机会话记账（~/.dsh/sessions）"),
     ("hermes", "Hermes", "本机 Hermes 各 Profile 会话库"),
@@ -1145,7 +1144,6 @@ def model_sources_overview(since=None):
     传 None 统计全部历史。
     """
     collectors = (
-        ("ccs", lambda: ccs_models_full(since)),
         ("claude", lambda: claude_model_source(since)),
         ("dsh", lambda: dsh_model_source(since)),
         ("hermes", lambda: hermes_models_full(since)),
@@ -1167,7 +1165,7 @@ def model_sources_overview(since=None):
     return {
         "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "since": since, "sources": sources,
-        "note": "总量由模型明细求和；跨来源不去重，可能包含同一请求。",
+        "note": "各来源均直读本机 Agent 客户端原生数据（已剔除 CCS 重复记账）；总量由所选来源模型明细求和。",
     }
 
 
@@ -1932,25 +1930,8 @@ def _codex_models(since_ts=None, per=None):
 
 
 def _codex_ccs_cost(since_ts=None):
-    """CCS 侧记到的 Codex 成本（rollout 文件本身无计价）。
-
-    含两种 data_source：'proxy'（代理期真实计价）+ 'codex_session'
-    （会话同步、按模型单价估算，覆盖 CCS 运行期间走 Codex++ 的流量，
-    两种来源 session 不重叠）；CCS 离线时段仍缺。
-    """
-    if not os.path.exists(CCS_DB):
-        return 0.0, 0
-    con = _ro(CCS_DB)
-    cur = con.cursor()
-    sql = ("SELECT COUNT(*), SUM(CAST(total_cost_usd AS REAL)) "
-           "FROM proxy_request_logs WHERE app_type='codex'")
-    args = []
-    if since_ts:
-        sql += " AND created_at >= ?"
-        args.append(int(since_ts))
-    r = _sum_row(cur, sql, args)
-    con.close()
-    return (r[1] or 0.0) if r else 0.0, (r[0] if r else 0)
+    """Codex 成本占位（已停用 CCS 数据库读取，统一直读本机 Agent 客户端，rollout 本身无计价）。"""
+    return 0.0, 0
 
 
 def codex_stats(since_ts=None):
@@ -2170,6 +2151,13 @@ def _ls_call(method, body, timeout=60):
         return json.loads(r.read().decode("utf-8", "replace"))
 
 
+def _strip_ag_effort(label):
+    """剥离模型名称末尾的思考强度后缀，如 (High)/(Medium)/(Low)/(Thinking)，使同模型不同强度合并统计。"""
+    if not isinstance(label, str):
+        return label
+    return re.sub(r"\s*\((?:High|Medium|Low|Thinking|Minimal)\)\s*$", "", label, flags=re.IGNORECASE).strip()
+
+
 def _ag_load_cache():
     if _AG_MEM["loaded"]:
         return _AG_MEM["data"]
@@ -2179,6 +2167,11 @@ def _ag_load_cache():
     except Exception:
         _AG_MEM["data"] = {}
     _AG_MEM["loaded"] = True
+    dyn_map = _AG_MEM["data"].get("_model_map")
+    if isinstance(dyn_map, dict):
+        for k, v in dyn_map.items():
+            if isinstance(k, str) and isinstance(v, str) and v:
+                _ANTIGRAVITY_MODEL_MAP[k] = _strip_ag_effort(v)
     return _AG_MEM["data"]
 
 def _ag_save_cache(data):
@@ -2194,47 +2187,96 @@ _AG_BRAIN_DIR = os.path.expanduser(r"~\.gemini\antigravity\brain")
 _AG_STATE_FILE = os.path.expanduser(r"~\.gemini\antigravity\antigravity_state.pbtxt")
 _AG_NATIVE_MEM = {"files": {}}
 _AG_NATIVE_LOCK = threading.Lock()
+_AG_MODEL_SYNC_TS = 0.0
 
 _ANTIGRAVITY_MODEL_MAP = {
-    "MODEL_PLACEHOLDER_M318": "Gemini 3.8 Flash (High)",
-    "MODEL_PLACEHOLDER_M319": "Gemini 3.8 Flash (Medium)",
-    "MODEL_PLACEHOLDER_M320": "Gemini 3.8 Flash (Low)",
+    "MODEL_PLACEHOLDER_M417": "Gemini 4 Argon",
+    "MODEL_PLACEHOLDER_M418": "Gemini 4 Argon",
+    "MODEL_PLACEHOLDER_M419": "Gemini 4 Argon",
+    "MODEL_PLACEHOLDER_M400": "Claude Opus 5.5",
+    "MODEL_PLACEHOLDER_M401": "Claude Opus 5.5",
+    "MODEL_PLACEHOLDER_M402": "Claude Opus 5.5",
+    "MODEL_PLACEHOLDER_M403": "Claude Sonnet 5.5",
+    "MODEL_PLACEHOLDER_M404": "Claude Sonnet 5.5",
+    "MODEL_PLACEHOLDER_M405": "Claude Sonnet 5.5",
+    "MODEL_PLACEHOLDER_M318": "Gemini 3.8 Flash",
+    "MODEL_PLACEHOLDER_M319": "Gemini 3.8 Flash",
+    "MODEL_PLACEHOLDER_M320": "Gemini 3.8 Flash",
     "MODEL_PLACEHOLDER_M322": "gemini-3.8-flash-tiered",
-    "MODEL_PLACEHOLDER_M298": "Gemini 3.7 Flash (High)",
-    "MODEL_PLACEHOLDER_M299": "Gemini 3.7 Flash (Medium)",
-    "MODEL_PLACEHOLDER_M300": "Gemini 3.7 Flash (Low)",
+    "MODEL_PLACEHOLDER_M298": "Gemini 3.7 Flash",
+    "MODEL_PLACEHOLDER_M299": "Gemini 3.7 Flash",
+    "MODEL_PLACEHOLDER_M300": "Gemini 3.7 Flash",
     "MODEL_PLACEHOLDER_M301": "gemini-3.7-flash-tiered",
-    "MODEL_PLACEHOLDER_M71": "Gemini 3.6 Flash (High)",
-    "MODEL_PLACEHOLDER_M72": "Gemini 3.6 Flash (Medium)",
-    "MODEL_PLACEHOLDER_M73": "Gemini 3.6 Flash (Low)",
+    "MODEL_PLACEHOLDER_M71": "Gemini 3.6 Flash",
+    "MODEL_PLACEHOLDER_M72": "Gemini 3.6 Flash",
+    "MODEL_PLACEHOLDER_M73": "Gemini 3.6 Flash",
     "MODEL_PLACEHOLDER_M196": "gemini-3.6-flash-tiered",
-    "MODEL_PLACEHOLDER_M84": "Gemini 3.5 Flash (High)",
-    "MODEL_PLACEHOLDER_M20": "Gemini 3.5 Flash (Medium)",
-    "MODEL_PLACEHOLDER_M187": "Gemini 3.5 Flash (Low)",
+    "MODEL_PLACEHOLDER_M84": "Gemini 3.5 Flash",
+    "MODEL_PLACEHOLDER_M20": "Gemini 3.5 Flash",
+    "MODEL_PLACEHOLDER_M187": "Gemini 3.5 Flash",
     "MODEL_PLACEHOLDER_M198": "Gemini 3.5 Flash Lite",
     "MODEL_PLACEHOLDER_M18": "Gemini 3 Flash",
-    "MODEL_PLACEHOLDER_M37": "Gemini 3.1 Pro (High)",
-    "MODEL_PLACEHOLDER_M36": "Gemini 3.1 Pro (Low)",
-    "MODEL_PLACEHOLDER_M16": "Gemini 3.1 Pro (High)",
+    "MODEL_PLACEHOLDER_M37": "Gemini 3.1 Pro",
+    "MODEL_PLACEHOLDER_M36": "Gemini 3.1 Pro",
+    "MODEL_PLACEHOLDER_M16": "Gemini 3.1 Pro",
     "MODEL_PLACEHOLDER_M50": "Gemini 3.1 Flash Lite",
     "MODEL_PLACEHOLDER_M21": "Gemini 3.1 Flash Image",
-    "MODEL_PLACEHOLDER_M26": "Claude Opus 4.6 (Thinking)",
-    "MODEL_PLACEHOLDER_M35": "Claude Sonnet 4.6 (Thinking)",
+    "MODEL_PLACEHOLDER_M26": "Claude Opus 4.6",
+    "MODEL_PLACEHOLDER_M35": "Claude Sonnet 4.6",
     "MODEL_GOOGLE_GEMINI_2_5_PRO": "Gemini 2.5 Pro",
     "MODEL_GOOGLE_GEMINI_2_5_FLASH": "Gemini 3.5 Flash Lite",
     "MODEL_GOOGLE_GEMINI_2_5_FLASH_LITE": "Gemini 3.5 Flash Lite",
-    "MODEL_OPENAI_GPT_OSS_120B_MEDIUM": "GPT-OSS 120B (Medium)",
+    "MODEL_OPENAI_GPT_OSS_120B_MEDIUM": "GPT-OSS 120B",
 }
 
 
+def _sync_ag_model_map(min_interval=60.0):
+    """从本地 Antigravity LS 的 GetUserStatus 动态同步最新模型代号映射并持久化。"""
+    global _AG_MODEL_SYNC_TS
+    now = time.time()
+    if now - _AG_MODEL_SYNC_TS < min_interval:
+        return False
+    _AG_MODEL_SYNC_TS = now
+    try:
+        us = _ls_call("GetUserStatus", {"metadata": {"ideType": "ANTIGRAVITY"}}, timeout=3)
+        configs = (
+            (us.get("userStatus") or {})
+            .get("cascadeModelConfigData") or {}
+        ).get("clientModelConfigs") or []
+        if not configs:
+            return False
+        cache = _ag_load_cache()
+        dyn = dict(cache.get("_model_map") or {}) if isinstance(cache.get("_model_map"), dict) else {}
+        updated = False
+        for c in configs:
+            m_id = ((c.get("modelOrAlias") or {}).get("model") or "").strip()
+            label = _strip_ag_effort((c.get("label") or "").strip())
+            if m_id and label:
+                _ANTIGRAVITY_MODEL_MAP[m_id] = label
+                if dyn.get(m_id) != label:
+                    dyn[m_id] = label
+                    updated = True
+        if updated:
+            cache["_model_map"] = dyn
+            _ag_save_cache(cache)
+        return True
+    except Exception:
+        return False
+
+
 def _resolve_ag_model(model_id):
-    """将 Antigravity 内部占位符转换为友好模型名称。"""
+    """将 Antigravity 内部占位符转换为友好模型名称（自动合并不同思考强度）。"""
     if not model_id:
         return "Gemini (Antigravity)"
+    _ag_load_cache()
     if model_id in _ANTIGRAVITY_MODEL_MAP:
-        return _ANTIGRAVITY_MODEL_MAP[model_id]
+        return _strip_ag_effort(_ANTIGRAVITY_MODEL_MAP[model_id])
+    if model_id.startswith("MODEL_"):
+        _sync_ag_model_map(min_interval=60.0)
+        if model_id in _ANTIGRAVITY_MODEL_MAP:
+            return _strip_ag_effort(_ANTIGRAVITY_MODEL_MAP[model_id])
     if not model_id.startswith("MODEL_"):
-        return model_id
+        return _strip_ag_effort(model_id)
     parts = model_id.split("_")
     return f"Gemini ({parts[-1]})"
 
@@ -2365,6 +2407,7 @@ def antigravity_tokens(days=None, max_conversations=30, since=None):
         port, token = _ls_info()
         if port:
             ls_alive = True
+            _sync_ag_model_map(min_interval=300.0)
     except Exception:
         pass
 
@@ -2470,6 +2513,8 @@ def antigravity_tokens(days=None, max_conversations=30, since=None):
     models_all = {}
     # 逐会话汇总
     for cid, c in cache.items():
+        if str(cid).startswith("_") or not isinstance(c, dict):
+            continue
         byday = c.get("byday") or {}
         tot_calls = c.get("calls") or 1
         if since_date:
@@ -2623,8 +2668,66 @@ def antigravity_status():
     return base
 
 
+def claude_native_tools(since_ts=None):
+    """Claude Code CLI 与 Claude Desktop 本机直读工具卡数据（不经 CCS）。"""
+    out = []
+    try:
+        nat_all = [r for r in _claude_native_rows(since_ts)
+                   if since_ts is None or r["ts"] >= since_ts]
+    except Exception:
+        return out
+
+    def _nat_agg(rows):
+        inp = sum(r["input"] for r in rows)
+        outp = sum(r["output"] for r in rows)
+        cr = sum(r["cache_read"] for r in rows)
+        cc = sum(r["cache_creation"] for r in rows)
+        denom = inp + cr + cc
+        return {
+            "requests": len(rows),
+            "sessions": len({r["session"] for r in rows if r["session"]}),
+            "input": inp, "output": outp, "cache_read": cr,
+            "cache_creation": cc, "total_tokens": inp + outp + cr + cc,
+            "cache_hit_rate": round(cr / denom, 4) if denom else 0.0,
+            "models_count": len({r["model"] for r in rows if r["model"]}),
+        }
+
+    n_cl = _nat_agg([r for r in nat_all if r["entrypoint"] != "claude-desktop"])
+    n_desk = _nat_agg([r for r in nat_all if r["entrypoint"] == "claude-desktop"])
+    if n_cl["requests"]:
+        out.append({
+            "name": CCS_TOOL_LABELS.get("claude", "Claude Code (CC)"),
+            "app_type": "claude", "group": "Claude", "available": True,
+            "source": "claude:native",
+            "requests": n_cl["requests"], "requests_proxy": 0, "requests_session": 0,
+            "input": n_cl["input"], "output": n_cl["output"],
+            "cache_read": n_cl["cache_read"], "cache_creation": n_cl["cache_creation"],
+            "total_tokens": n_cl["total_tokens"],
+            "cache_hit_rate": n_cl["cache_hit_rate"],
+            "models_count": n_cl["models_count"],
+            "cost_usd": None,
+            "sessions": n_cl["sessions"],
+        })
+    if n_desk["requests"]:
+        out.append({
+            "name": CCS_TOOL_LABELS.get("claude-desktop", "Claude Desktop"),
+            "app_type": "claude-desktop", "group": "Claude", "available": True,
+            "source": "claude-desktop:native",
+            "requests": n_desk["requests"], "requests_proxy": 0, "requests_session": 0,
+            "input": n_desk["input"], "output": n_desk["output"],
+            "cache_read": n_desk["cache_read"], "cache_creation": n_desk["cache_creation"],
+            "total_tokens": n_desk["total_tokens"],
+            "cache_hit_rate": n_desk["cache_hit_rate"],
+            "models_count": n_desk["models_count"],
+            "cost_usd": None,
+            "sessions": n_desk["sessions"],
+        })
+    out.sort(key=lambda t: -t["total_tokens"])
+    return out
+
+
 def tools_overview(since=None):
-    """工具/Agent 维度总览：Hermes 各档案 + CCS 各客户端 + ZCode + Antigravity。
+    """工具/Agent 维度总览：各本机 Agent 客户端原生直读（已剔除 CCS 重复记账）。
 
     since：窗口起点（秒级时间戳，可选）。"""
     tools = []
@@ -2646,13 +2749,31 @@ def tools_overview(since=None):
             "cost_usd": a.get("cost_usd"),
             "cost_anomaly": a.get("cost_anomaly", False),
         })
-    # Codex 用 rollout 全线路记账单独成行；CCS 的 codex 行剔除防双算
-    # （rollout 已覆盖 CCS 代理期间的流量，成本口径见 codex_stats.note）
-    for t in ccs_by_tool(since):
-        if t.get("app_type") in ("codex", "pi"):
-            continue
-        t["group"] = "CCS"
-        tools.append(t)
+    tools.extend(claude_native_tools(since))
+    for src_fn, label, app_id, grp in (
+        (opencode_model_source, "OpenCode", "opencode", "OpenCode"),
+        (xiaomi_mimo_model_source, "Xiaomi MiMo 桌面端", "xiaomi_mimo", "Xiaomi MiMo"),
+        (workbuddy_model_source, "WorkBuddy", "workbuddy", "WorkBuddy"),
+    ):
+        try:
+            ms = src_fn(since)
+            if ms.get("available") and ms.get("has_data"):
+                tools.append({
+                    "name": label, "app_type": app_id, "group": grp,
+                    "available": True, "source": f"{app_id}:native",
+                    "requests": ms.get("requests", 0),
+                    "sessions": ms.get("sessions", 0),
+                    "input": ms.get("input", 0), "output": ms.get("output", 0),
+                    "cache_read": ms.get("cache_read", 0),
+                    "cache_write": ms.get("cache_write", 0),
+                    "cache_creation": ms.get("cache_creation", 0),
+                    "total_tokens": ms.get("total_tokens", 0),
+                    "cache_hit_rate": ms.get("cache_hit_rate", 0.0),
+                    "models_count": len(ms.get("models", [])),
+                    "cost_usd": None,
+                })
+        except Exception:
+            pass
     cx = codex_stats(since)
     tools.append(cx)
     ds = dsh_stats(since)
@@ -3340,7 +3461,7 @@ def _json_db_event_rows(path, since_ts):
         return []
     events = []
     try:
-        for raw_time, role, _name, raw_tokens, raw_usage, message_time, timestamp, _provider \
+        for raw_time, role, name, raw_tokens, raw_usage, message_time, timestamp, provider \
                 in _sqlite_data_rows(path):
             if role != "assistant":
                 continue
@@ -3351,9 +3472,10 @@ def _json_db_event_rows(path, since_ts):
             if not ts or ts < since_ts:
                 continue
             v = _usage_fields(tokens)
+            mdl = f"{provider}/{name}" if provider and name else (name or "")
             events.append((ts, v.get("input", 0),
                            v.get("output", 0) + v.get("reasoning", 0),
-                           v.get("cache_read", 0), v.get("cache_write", 0)))
+                           v.get("cache_read", 0), v.get("cache_write", 0), mdl))
     except Exception:
         return events
     return events
@@ -3447,53 +3569,17 @@ VT_RANGES = {60: 60, 180: 60, 360: 120, 720: 240, 1440: 480}
 def _rate_series(now, range_min=60, bucket_sec=60):
     """滚动窗口 [now - range_min*60, now] 的速率桶序列（pulse 与 v-t 时间筛选共用）。
 
-    口径与 pulse() 完全一致：CCS 主表剔除 claude/claude-desktop 会话同步行与
-    codex/pi 行后按桶分组；其余本机 agent（Hermes 会话 / ZCode / claude-native /
+    口径与 pulse() 完全一致：各本机 Agent 客户端（Hermes 会话 / ZCode / claude-native /
     DSH / Codex / Pi / OpenCode / MiMo / WorkBuddy / CommandCode / Antigravity）
-    逐事件并入（并入理由见各来源注释，剔除规则同上）；input 按
-    input_token_semantics 折算纯口径，多来源在 Python 侧合并。
+    原生数据逐事件并入（已剔除 CCS 数据库读取，防双算）。
     返回 {"minutes": [...], "minutes_by_model": {...}, "models": [...]}，每桶字段
     与 pulse 分钟桶一致（requests/tokens/output_tokens/cost/by_model），桶数
     n = ceil(range_min*60 / bucket_sec) ≤ 180；bucket_sec=60 时与历史行为逐字段一致。
     """
-    if not os.path.exists(CCS_DB):
-        return None
     n = -(-range_min * 60 // bucket_sec)          # ceil：窗口桶数（≤180）
     cur_b = now // bucket_sec
     since = now - range_min * 60
     minutes = {}
-    con = _ro(CCS_DB)
-    try:
-        cur = con.cursor()
-        for r in cur.execute(
-                """SELECT created_at/?, model, COUNT(*),
-                          SUM(input_tokens), SUM(output_tokens),
-                          SUM(cache_read_tokens), SUM(cache_creation_tokens),
-                          input_token_semantics, SUM(CAST(total_cost_usd AS REAL))
-                   FROM proxy_request_logs WHERE created_at >= ?
-                   AND NOT (app_type = 'claude'
-                        OR app_type IN ('codex', 'pi')
-                        OR (app_type = 'claude-desktop'
-                            AND data_source = 'session_log'))
-                   GROUP BY created_at/?, model, input_token_semantics""",
-                (bucket_sec, since, bucket_sec)):
-            e = minutes.setdefault(r[0], {"requests": 0, "tokens": 0, "output_tokens": 0, "cost": 0.0, "by_model": {}})
-            reqs = r[2] or 0
-            toks = (_pure_input(r[7], r[3], r[5], r[6]) + (r[4] or 0)
-                    + (r[5] or 0) + (r[6] or 0))
-            out_toks = r[4] or 0
-            e["requests"] += reqs
-            e["tokens"] += toks
-            e["output_tokens"] = e.get("output_tokens", 0) + out_toks
-            e["cost"] += r[8] or 0.0
-            mdl = r[1] or ""
-            if mdl:
-                me = e["by_model"].setdefault(mdl, {"requests": 0, "tokens": 0, "output_tokens": 0})
-                me["requests"] += reqs
-                me["tokens"] += toks
-                me["output_tokens"] = me.get("output_tokens", 0) + out_toks
-    finally:
-        con.close()
 
     def _minutes_bump(ts, inp, outp, cr, cc, cost, reqs=1, model=None):
         mb = int(ts or 0) // bucket_sec
@@ -3622,13 +3708,6 @@ def rate_series(range_min=60):
         range_min, bucket_sec = 60, 60
     out["range_min"] = range_min
     out["bucket_sec"] = bucket_sec
-    if not os.path.exists(CCS_DB):
-        out["available"] = False
-        out["reason"] = "未找到 CCS 数据库"
-        out["minutes"] = []
-        out["minutes_by_model"] = {}
-        out["models"] = []
-        return out
     out["available"] = True
     _claude_native_bg_start()
     try:
@@ -3648,27 +3727,15 @@ def rate_series(range_min=60):
 def pulse():
     """仪表盘「实时脉搏」聚合：速率 / 小时堆叠 / 请求波 / 请求流 / 工具日序列 / 缓存节省。
 
-    只动 proxy_request_logs 单表（逐请求行天然带时间戳，含 data_source='session_log'
-    的会话同步行），全部是带 WHERE 下界的 GROUP BY / LIMIT，毫秒级返回。
-    口径与 ccs_daily 一致：input 按语义折算纯口径，因此每个聚合都必须带
-    input_token_semantics 分组，桶在 Python 侧合并；
-    total = 纯input + output + cache_read + cache_creation。
+    全部直读本机各 Agent 客户端原生数据（Hermes / ZCode / Claude / DSH /
+    Codex / Pi / OpenCode / MiMo / WorkBuddy / CommandCode / Antigravity），
+    不依赖 CCS 数据库，天然无代理层与同步表双算。
     """
     now = int(time.time())
     _claude_native_bg_start()
-    out = {"generated_at": time.strftime("%Y-%m-%d %H:%M:%S"), "now": now}
-    if not os.path.exists(CCS_DB):
-        out["available"] = False
-        out["reason"] = "未找到 CCS 数据库"
-        return out
-    out["available"] = True
-    con = _ro(CCS_DB)
-    cur = con.cursor()
+    out = {"generated_at": time.strftime("%Y-%m-%d %H:%M:%S"), "now": now, "available": True}
     try:
-        # ---- 分钟桶（最近 60 分钟，全 Agent 口径）----
-        # 实现抽到 _rate_series()（v-t 图时间筛选共用同一实现）：CCS 侧剔除
-        # claude/claude-desktop 会话同步行与 codex/pi 行（防与 rollout/jsonl
-        # 本机直读双算），Hermes/ZCode/claude-native/其余本机 agent 逐事件并入。
+        # ---- 分钟桶（最近 60 分钟，全 Agent 原生直读口径）----
         _rs = _rate_series(now, 60, 60) or {"minutes": [], "minutes_by_model": {}, "models": []}
         out["minutes"] = _rs["minutes"]
         out["minutes_by_model"] = _rs["minutes_by_model"]
@@ -3693,36 +3760,6 @@ def pulse():
                                 -1, -1, -1)))
         h0 = day0 - 86400
         hours = {}
-        for r in cur.execute(
-                """SELECT (created_at - ?)/3600, COUNT(*),
-                          SUM(input_tokens), SUM(output_tokens),
-                          SUM(cache_read_tokens), SUM(cache_creation_tokens),
-                          input_token_semantics, SUM(CAST(total_cost_usd AS REAL)),
-                          SUM(CAST(input_cost_usd AS REAL)),
-                          SUM(CAST(output_cost_usd AS REAL)),
-                          SUM(CAST(cache_read_cost_usd AS REAL)),
-                          SUM(CAST(cache_creation_cost_usd AS REAL))
-                   FROM proxy_request_logs WHERE created_at >= ?
-                   AND NOT (app_type = 'claude'
-                        OR app_type IN ('codex', 'pi')
-                        OR (app_type = 'claude-desktop'
-                            AND data_source = 'session_log'))
-                   GROUP BY (created_at - ?)/3600, input_token_semantics""",
-                (h0, h0, h0)):
-            b = hours.setdefault(int(r[0]), {"input": 0, "output": 0,
-                "cache_read": 0, "cache_creation": 0, "requests": 0, "cost": 0.0,
-                "input_cost": 0.0, "output_cost": 0.0,
-                "cache_read_cost": 0.0, "cache_creation_cost": 0.0})
-            b["input"] += _pure_input(r[6], r[2], r[4], r[5])
-            b["output"] += r[3] or 0
-            b["cache_read"] += r[4] or 0
-            b["cache_creation"] += r[5] or 0
-            b["requests"] += r[1] or 0
-            b["cost"] += r[7] or 0.0
-            b["input_cost"] += r[8] or 0.0
-            b["output_cost"] += r[9] or 0.0
-            b["cache_read_cost"] += r[10] or 0.0
-            b["cache_creation_cost"] += r[11] or 0.0
         # ---- 多源并入：Hermes 各 profile 会话 + ZCode 调用（2026-10-02，
         #      堆叠图「全 Agent 可统计」）。口径：input/output/cache_read 原样，
         #      Hermes cache_write 与 ZCode cache_creation 记入 cache_creation；
@@ -3862,27 +3899,8 @@ def pulse():
 
         # ---- 逐请求行（请求波 30 分钟 / 请求流 40 条）----
         reqs = []
-        for r in cur.execute(
-                """SELECT created_at, app_type, model, input_tokens, output_tokens,
-                          cache_read_tokens, cache_creation_tokens,
-                          input_token_semantics, CAST(total_cost_usd AS REAL),
-                          status_code, latency_ms
-                   FROM proxy_request_logs WHERE created_at >= ?
-                   AND NOT (app_type = 'claude'
-                        OR app_type IN ('codex', 'pi')
-                        OR (app_type = 'claude-desktop'
-                            AND data_source = 'session_log'))
-                   ORDER BY created_at DESC LIMIT 120""", (now - 1800,)):
-            reqs.append({
-                "ts": r[0], "app": r[1] or "", "model": r[2] or "",
-                "input": _pure_input(r[7], r[3], r[5], r[6]),
-                "output": r[4] or 0, "cache_read": r[5] or 0,
-                "cache_creation": r[6] or 0,
-                "cost": round(r[8] or 0.0, 6),
-                "status": r[9], "latency_ms": r[10] or 0})
         # 多源事件并入：Hermes 各 profile 的会话（一波=一次会话启动，粒度会话级）
-        # 与 ZCode model_usage 逐调用。各源保底条数（不限 30 分钟窗），否则
-        # CCS 流量大时其他源永远进不了请求流。前端按 app 键聚焦过滤。
+        # 与 ZCode model_usage 逐调用。各源保底条数（不限 30 分钟窗），前端按 app 键聚焦过滤。
         for hname in _active_agents():
             hdb = _agent_db(hname)
             if not os.path.exists(hdb):
@@ -3932,12 +3950,12 @@ def pulse():
                 zcon.close()
         except Exception:
             pass
-        reqs.sort(key=lambda x: x["ts"], reverse=True)
-        # Claude 本机逐条并入事件流（毫秒时间戳 → 请求波）
+        # Claude 本机逐条并入事件流（30 分钟入请求波，保底 30 条入请求流）
         try:
-            for nr in _claude_native_rows(now - 14 * 86400):
-                if nr["ts"] < now - 1800:
-                    continue
+            ce_rows = list(_claude_native_rows(now - 14 * 86400) or [])
+            ce_rows.sort(key=lambda x: x["ts"], reverse=True)
+            cl_limit = max(30, sum(1 for r in ce_rows if r["ts"] >= now - 1800))
+            for nr in ce_rows[:cl_limit]:
                 reqs.append({
                     "ts": nr["ts"],
                     "app": ("claude-desktop"
@@ -3963,11 +3981,12 @@ def pulse():
                     "latency_ms": dr[7] if len(dr) > 7 else 0, "kind": "call"})
         except Exception:
             pass
-        # Antigravity 本机逐条并入事件流
+        # Antigravity 本机逐条并入事件流（30 分钟入请求波，保底 30 条入请求流）
         try:
-            for ar in _antigravity_native_rows(now - 14 * 86400):
-                if ar["ts"] < now - 1800:
-                    continue
+            ag_rows = list(_antigravity_native_rows(now - 14 * 86400) or [])
+            ag_rows.sort(key=lambda x: x["ts"], reverse=True)
+            ag_limit = max(30, sum(1 for r in ag_rows if r["ts"] >= now - 1800))
+            for ar in ag_rows[:ag_limit]:
                 reqs.append({
                     "ts": ar["ts"], "app": "antigravity", "model": ar["model"],
                     "input": ar["input"], "output": ar["output"],
@@ -4008,7 +4027,7 @@ def pulse():
             pass
         reqs.sort(key=lambda x: x["ts"], reverse=True)
         out["ripple"] = [x for x in reqs if x["ts"] >= now - 1800]
-        # recent 40 按「每源轮转」取：CCS 流量大时其他源的代表行不会被挤出
+        # recent 40 按「每源轮转」取：高频源流量大时其他源的代表行不会被挤出
         by_app = {}
         for x in reqs:
             by_app.setdefault(x["app"], []).append(x)
@@ -4023,21 +4042,6 @@ def pulse():
 
         # ---- 5 小时滚动窗口（请求侧口径；配额重置点由路由层并入）----
         w = {"tokens": 0, "cost": 0.0, "requests": 0}
-        for r in cur.execute(
-                """SELECT COUNT(*),
-                          SUM(input_tokens), SUM(output_tokens),
-                          SUM(cache_read_tokens), SUM(cache_creation_tokens),
-                          input_token_semantics, SUM(CAST(total_cost_usd AS REAL))
-                   FROM proxy_request_logs WHERE created_at >= ?
-                   AND NOT (app_type = 'claude'
-                        OR app_type IN ('codex', 'pi')
-                        OR (app_type = 'claude-desktop'
-                            AND data_source = 'session_log'))
-                   GROUP BY input_token_semantics""", (now - 18000,)):
-            w["tokens"] += (_pure_input(r[5], r[1], r[3], r[4])
-                            + (r[2] or 0) + (r[3] or 0) + (r[4] or 0))
-            w["cost"] += r[6] or 0.0
-            w["requests"] += r[0] or 0
         try:
             for nr in _claude_native_rows(now - 14 * 86400):
                 if nr["ts"] < now - 18000:
@@ -4107,46 +4111,10 @@ def pulse():
         w["cost"] = round(w["cost"], 4)
         out["window5h"] = w
 
-        # ---- 工具卡：14 天日序列（proxy + 会话同步 rollups 两路相加，与 ccs_by_tool
-        #      同约定）+ 最后活动时间 ----
-        d14 = time.strftime("%Y-%m-%d", time.localtime(now - 13 * 86400))
+        # ---- 工具卡：14 天日序列（各客户端原生直读）+ 最后活动时间 ----
         series = {}
-        for r in cur.execute(
-                """SELECT date(created_at,'unixepoch','localtime'), app_type, COUNT(*),
-                          SUM(input_tokens), SUM(output_tokens),
-                          SUM(cache_read_tokens), SUM(cache_creation_tokens),
-                          input_token_semantics
-                   FROM proxy_request_logs WHERE created_at >= ?
-                   AND NOT (app_type = 'claude'
-                        OR (app_type = 'claude-desktop'
-                            AND data_source = 'session_log'))
-                   GROUP BY 1, 2, 8""", (now - 14 * 86400,)):
-            e = series.setdefault((r[0], r[1]), {"tokens": 0, "requests": 0, "cost": 0.0,
-                "input": 0, "output": 0, "cache_read": 0, "cache_creation": 0})
-            inp = _pure_input(r[7], r[3], r[5], r[6])
-            e["input"] += inp
-            e["output"] += r[4] or 0
-            e["cache_read"] += r[5] or 0
-            e["cache_creation"] += r[6] or 0
-            e["tokens"] += inp + (r[4] or 0) + (r[5] or 0) + (r[6] or 0)
-            e["requests"] += r[2] or 0
-        for r in cur.execute(
-                """SELECT date, app_type, SUM(request_count), SUM(input_tokens),
-                          SUM(output_tokens), SUM(cache_read_tokens),
-                          SUM(cache_creation_tokens), SUM(CAST(total_cost_usd AS REAL))
-                   FROM usage_daily_rollups WHERE date >= ? GROUP BY 1, 2""", (d14,)):
-            e = series.setdefault((r[0], r[1]), {"tokens": 0, "requests": 0, "cost": 0.0,
-                "input": 0, "output": 0, "cache_read": 0, "cache_creation": 0})
-            e["input"] += r[3] or 0
-            e["output"] += r[4] or 0
-            e["cache_read"] += r[5] or 0
-            e["cache_creation"] += r[6] or 0
-            e["tokens"] += (r[3] or 0) + (r[4] or 0) + (r[5] or 0) + (r[6] or 0)
-            e["requests"] += r[2] or 0
-            e["cost"] += r[7] or 0.0
         # Claude 本机直读并入日序列
         try:
-            import datetime as _dt
             for nr in _claude_native_rows(now - 14 * 86400):
                 d = time.strftime("%Y-%m-%d", time.localtime(nr["ts"]))
                 key = ("claude-desktop" if nr["entrypoint"] == "claude-desktop"
@@ -4178,6 +4146,41 @@ def pulse():
                 e["requests"] += 1
         except Exception:
             pass
+        # Codex 本机并入日序列
+        try:
+            for cev in _codex_event_rows(now - 14 * 86400):
+                if cev[0] < now - 14 * 86400:
+                    continue
+                d = time.strftime("%Y-%m-%d", time.localtime(cev[0]))
+                e = series.setdefault((d, "codex"), {"tokens": 0, "requests": 0,
+                    "cost": 0.0, "input": 0, "output": 0, "cache_read": 0,
+                    "cache_creation": 0})
+                e["input"] += cev[1] or 0
+                e["output"] += cev[2] or 0
+                e["cache_read"] += cev[3] or 0
+                e["cache_creation"] += cev[4] or 0
+                e["tokens"] += (cev[1] or 0) + (cev[2] or 0) + (cev[3] or 0) + (cev[4] or 0)
+                e["requests"] += 1
+        except Exception:
+            pass
+        # Pi 本机并入日序列
+        try:
+            for pev in _pi_event_rows(now - 14 * 86400):
+                if pev[0] < now - 14 * 86400:
+                    continue
+                d = time.strftime("%Y-%m-%d", time.localtime(pev[0]))
+                e = series.setdefault((d, "pi"), {"tokens": 0, "requests": 0,
+                    "cost": 0.0, "input": 0, "output": 0, "cache_read": 0,
+                    "cache_creation": 0})
+                e["input"] += pev[1] or 0
+                e["output"] += pev[2] or 0
+                e["cache_read"] += pev[3] or 0
+                e["cache_creation"] += pev[4] or 0
+                e["tokens"] += (pev[1] or 0) + (pev[2] or 0) + (pev[3] or 0) + (pev[4] or 0)
+                e["requests"] += 1
+                e["cost"] += pev[6] if len(pev) > 6 else 0.0
+        except Exception:
+            pass
         # Antigravity 本机逐条并入日序列
         try:
             for ar in _antigravity_native_rows(now - 14 * 86400):
@@ -4205,10 +4208,7 @@ def pulse():
                                       "cache_creation": 0}
                                      for d in dates] for app in by_tool}
         out["tools_dates"] = dates
-        # ---- 最后活动时间：按「聚焦键」给全源口径，与 hours_today_by_app /
-        #      事件流同一批数据。只查 proxy_request_logs 会让 Claude 桌面端显示
-        #      CCS 代理聊天行的旧时间（实测显示「10 天前」而当天有请求），
-        #      Codex/ZCode/Hermes 各卡干脆没有值（前端只能显示 —）。----
+        # ---- 最后活动时间：按「聚焦键」给全源原生直读口径 ----
         last = {}
 
         def _bump_last(key, ts):
@@ -4230,14 +4230,6 @@ def pulse():
             _bump_last(key, best)
 
         last_window = now - 30 * 86400
-        for r in cur.execute(
-                """SELECT app_type, MAX(created_at) FROM proxy_request_logs
-                   WHERE created_at >= ?
-                   AND NOT (app_type = 'claude' OR app_type IN ('codex', 'pi')
-                        OR (app_type = 'claude-desktop'
-                            AND data_source = 'session_log'))
-                   GROUP BY app_type""", (last_window,)):
-            _bump_last(r[0], r[1])
         for hname in _active_agents():
             hdb = _agent_db(hname)
             if not os.path.exists(hdb):
@@ -4283,8 +4275,6 @@ def pulse():
                 _bump_last("antigravity", ar["ts"])
         except Exception:
             pass
-        # Codex / Pi 的最后活动取会话文件 mtime：等价于该会话最后一次写入，
-        # 且不用解析内容（30 天事件窗口冷启动要多读 4s，这里只要 30ms）。
         try:
             _bump_mtime_last("codex", _codex_paths())
         except Exception:
@@ -4293,43 +4283,18 @@ def pulse():
             _bump_mtime_last("pi", _pi_session_paths())
         except Exception:
             pass
+        try:
+            _bump_mtime_last("opencode", [p for p in _opencode_db_candidates() if os.path.isfile(p)])
+        except Exception:
+            pass
+        try:
+            _bump_mtime_last("xiaomi_mimo", [p for p in _mimocode_db_candidates() if os.path.isfile(p)])
+        except Exception:
+            pass
         out["tools_last"] = last
 
-        # ---- 今天按小时按 Agent（焦点模式堆叠图；CCS 之外 Hermes/ZCode
-        #      同口径并入，键与事件流一致：hermes:<profile> / zcode）----
+        # ---- 今天按小时按 Agent（焦点模式堆叠图：全客户端原生直读）----
         hours_app = {}
-        for r in cur.execute(
-                """SELECT (created_at - ?)/3600, app_type,
-                          SUM(input_tokens), SUM(output_tokens),
-                          SUM(cache_read_tokens), SUM(cache_creation_tokens),
-                          input_token_semantics,
-                          SUM(CAST(total_cost_usd AS REAL)),
-                          SUM(CAST(input_cost_usd AS REAL)),
-                          SUM(CAST(output_cost_usd AS REAL)),
-                          SUM(CAST(cache_read_cost_usd AS REAL)),
-                          SUM(CAST(cache_creation_cost_usd AS REAL))
-                   FROM proxy_request_logs
-                   WHERE created_at >= ? AND created_at < ?
-                   AND NOT (app_type = 'claude'
-                        OR (app_type = 'claude-desktop'
-                            AND data_source = 'session_log'))
-                   GROUP BY (created_at - ?)/3600, app_type, input_token_semantics""",
-                (day0, day0, day0 + 86400, day0)):
-            h = int(r[0])
-            if h < 0 or h > 23:
-                continue
-            app = r[1] or ""
-            per = hours_app.setdefault(app, [dict(zero) for _ in range(24)])
-            b = per[h]
-            b["input"] += _pure_input(r[6], r[2], r[4], r[5])
-            b["output"] += r[3] or 0
-            b["cache_read"] += r[4] or 0
-            b["cache_creation"] += r[5] or 0
-            b["cost"] = b.get("cost", 0.0) + (r[7] or 0.0)
-            b["input_cost"] = b.get("input_cost", 0.0) + (r[8] or 0.0)
-            b["output_cost"] = b.get("output_cost", 0.0) + (r[9] or 0.0)
-            b["cache_read_cost"] = b.get("cache_read_cost", 0.0) + (r[10] or 0.0)
-            b["cache_creation_cost"] = b.get("cache_creation_cost", 0.0) + (r[11] or 0.0)
         # Hermes / ZCode 并入 by_app（与事件流聚焦键一致）
         for hname in _active_agents():
             hdb = _agent_db(hname)
@@ -4337,8 +4302,6 @@ def pulse():
                 continue
             try:
                 hcon = _ro(hdb)
-                # 2026-10-13：按活跃区间分摊到今日小时桶（跨天会话今日部分
-                # 不再丢失）；请求数仍记在会话启动所在小时
                 for hr in hcon.execute(
                         """SELECT started_at, last_activity_at, ended_at,
                                   input_tokens, output_tokens,
@@ -4451,34 +4414,10 @@ def pulse():
         except Exception:
             pass
         out["hours_today_by_app"] = hours_app
-
-        # ---- 缓存节省：最近 30 天 cache_read 按官方价差折算 ----
-        saved = 0.0
-        try:
-            price = {}
-            for p in cur.execute(
-                    """SELECT model_id, input_cost_per_million,
-                              cache_read_cost_per_million FROM model_pricing"""):
-                try:
-                    price[p[0]] = (float(p[1] or 0), float(p[2] or 0))
-                except (TypeError, ValueError):
-                    pass
-            for r in cur.execute(
-                    """SELECT COALESCE(pricing_model, model), SUM(cache_read_tokens)
-                       FROM proxy_request_logs WHERE created_at >= ?
-                       GROUP BY 1""", (now - 30 * 86400,)):
-                pp = price.get(r[0])
-                if pp and r[1]:
-                    saved += r[1] / 1e6 * max(pp[0] - pp[1], 0.0)
-            saved = round(saved, 2)
-        except Exception:
-            saved = None
-        out["cache_saved_usd_30d"] = saved
+        out["cache_saved_usd_30d"] = None
     except Exception as e:
         out["available"] = False
         out["reason"] = str(e)
-    finally:
-        con.close()
     return out
 
 

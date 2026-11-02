@@ -35,6 +35,9 @@ webui_files = [
     ('games.css', 'webui'),
     ('games.js', 'webui'),
     ('icons/app_logo.svg', 'webui/icons'),
+    ('icons/quota-antigravity.png', 'webui/icons'),
+    ('icons/quota-claude.png', 'webui/icons'),
+    ('icons/quota-codex.png', 'webui/icons'),
 ]
 webui_datas = [
     (os.path.join('webui', rel), dest)
@@ -85,6 +88,8 @@ a = Analysis(
         'translate_backend', 'stats_server', 'stats_api',
         'ai_hub', 'ai_media_rankings',
         'codex_switcher',       # OpenAI 专区（开源保留的 Agent 模块）
+        'antigravity_switcher',  # Antigravity 专区与账号切换矩阵
+        'antigravity_quota',
         'clipboard_utils',      # 公共剪贴板（独立零依赖实现）
         'clipboard_history',
         'module_runtime',

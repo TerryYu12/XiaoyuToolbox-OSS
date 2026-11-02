@@ -13,7 +13,6 @@
   'use strict';
 
   const MODEL_SOURCE_OPTIONS = [
-    { id: 'ccs', label: 'CCS' },
     { id: 'claude', label: 'Claude 本机直读' },
     { id: 'dsh', label: 'DSH' },
     { id: 'hermes', label: 'Hermes' },
@@ -1700,7 +1699,8 @@
   // hermes:<name>；ZCode/Codex 用固定键；无本机逐事件数据源（如 Antigravity）
   // 返回 null（不可聚焦）。
   function zpFocusKey(t) {
-    if (t.app_type) return t.app_type;
+    const app = t.app_type || '';
+    if (app) return app;
     const name = t.name || '';
     if (t.group === 'Hermes' || name.startsWith('Hermes·')) {
       return 'hermes:' + (name.split('·')[1] || '');
@@ -1708,7 +1708,7 @@
     if (name === 'ZCode') return 'zcode';
     if (name === 'Codex' || t.group === 'Codex') return 'codex';
     if (name === 'DSH' || t.group === 'DSH' || name.toLowerCase() === 'dsh') return 'dsh';
-    if (name === 'Antigravity' || t.app_type === 'antigravity') return 'antigravity';
+    if (name === 'Antigravity' || app === 'antigravity') return 'antigravity';
     if (app === 'pi' || name.includes('Pi') || name.includes('OMP')) return 'pi';
     return null;
   }
@@ -1722,8 +1722,11 @@
     if (app === 'zcode') return 'zcode';
     if (app === 'pi' || name.includes('Pi') || name.includes('OMP')) return 'pi';
     if (app === 'dsh') return 'dsh';
+    if (app === 'opencode') return 'opencode';
+    if (app === 'xiaomi_mimo') return 'xiaomi_mimo';
+    if (app === 'workbuddy') return 'workbuddy';
+    if (app === 'commandcode') return 'commandcode';
     if (app === 'antigravity') return 'antigravity';
-    if (app) return 'ccs';                 // gemini / grokbuild 等 CCS 行
     if (t.group === 'Hermes' || name.startsWith('Hermes·')) return 'hermes';
     if (name === 'Codex') return 'codex';
     if (name === 'ZCode') return 'zcode';
@@ -3710,7 +3713,7 @@
     const hasPayload = Boolean(state.modelSourcesData && Array.isArray(state.modelSourcesData.sources));
     const sources = hasPayload
       ? getModelSourceRows().filter(source => source.available === true && source.has_data === true)
-      : MODEL_SOURCE_OPTIONS.filter(source => ['ccs', 'hermes', 'codex', 'zcode', 'antigravity'].includes(source.id));
+      : MODEL_SOURCE_OPTIONS.filter(source => ['claude', 'hermes', 'codex', 'zcode', 'antigravity'].includes(source.id));
     const options = [{ id: 'all', label: '全部合并' }, ...sources.map(source => ({
       id: source.id,
       label: source.name || MODEL_SOURCE_OPTIONS.find(item => item.id === source.id)?.label || source.id
@@ -3782,6 +3785,7 @@
     const tools = Array.isArray(state.toolsData) ? state.toolsData : [];
     let sum = 0, seen = 0;
     tools.forEach(t => {
+      if (t.cost_anomaly) return;
       const c = Number(t.cost_usd);
       if (isFinite(c) && c > 0) { sum += c; seen++; }
     });
@@ -8444,6 +8448,750 @@
     }
   };
 
+  // ==========================================
+  // Antigravity 专区与账号矩阵切换器 (Antigravity Switcher)
+  // ==========================================
+  let _lastAgStatus = null;
+
+  function initAntigravityPage() {
+    if (!initAntigravityPage._done) {
+      initAntigravityPage._done = true;
+      const btnRefresh = document.getElementById('btnAgRefresh');
+      if (btnRefresh) btnRefresh.addEventListener('click', () => fetchAntigravityStatus());
+
+      const btnSaveCurrent = document.getElementById('btnAgSaveCurrent');
+      if (btnSaveCurrent) btnSaveCurrent.addEventListener('click', () => window.saveCurrentAgPrompt());
+
+      const btnSaveActiveInline = document.getElementById('btnAgSaveActiveInline');
+      if (btnSaveActiveInline) btnSaveActiveInline.addEventListener('click', () => window.saveCurrentAgPrompt());
+
+      const btnRestartClient = document.getElementById('btnAgRestartClient');
+      if (btnRestartClient) btnRestartClient.addEventListener('click', () => restartAntigravityClient());
+
+      const btnOpenAddModal = document.getElementById('btnAgOpenAddModal');
+      if (btnOpenAddModal) btnOpenAddModal.addEventListener('click', () => window.openAgModal());
+
+      const btnCloseModal = document.getElementById('btnCloseAgModal');
+      if (btnCloseModal) btnCloseModal.addEventListener('click', () => window.closeAgModal());
+
+      const btnCancelModal = document.getElementById('btnCancelAgModal');
+      if (btnCancelModal) btnCancelModal.addEventListener('click', () => window.closeAgModal());
+
+      const btnSubmitModal = document.getElementById('btnSubmitAgModal');
+      if (btnSubmitModal) btnSubmitModal.addEventListener('click', () => submitAgModal());
+
+      const btnFillCurrent = document.getElementById('btnAgFillFromCurrent');
+      if (btnFillCurrent) btnFillCurrent.addEventListener('click', () => fillAgModalFromCurrent());
+
+      const btnVerifyRt = document.getElementById('btnAgVerifyRt');
+      if (btnVerifyRt) btnVerifyRt.addEventListener('click', () => verifyAndExchangeAgRt());
+
+      const fileInput = document.getElementById('modalAgFileInput');
+      if (fileInput) {
+        fileInput.addEventListener('change', (e) => {
+          const file = e.target.files && e.target.files[0];
+          if (file) {
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+              const text = evt.target.result;
+              const credEl = document.getElementById('modalAgCredContent');
+              if (credEl) {
+                credEl.value = text;
+                updateAgModalParsedPreview(text);
+              }
+            };
+            reader.readAsText(file);
+          }
+        });
+      }
+
+      const credContentEl = document.getElementById('modalAgCredContent');
+      if (credContentEl) {
+        credContentEl.addEventListener('input', () => {
+          updateAgModalParsedPreview(credContentEl.value);
+        });
+      }
+
+      const rtInputEl = document.getElementById('modalAgRtInput');
+      if (rtInputEl) {
+        rtInputEl.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            verifyAndExchangeAgRt();
+          }
+        });
+      }
+
+      function setupAgPromptCopy(btnId, textId) {
+        const btn = document.getElementById(btnId);
+        const textEl = document.getElementById(textId);
+        if (!btn || !textEl) return;
+
+        const doCopy = async () => {
+          const text = (textEl.innerText || textEl.textContent || '').trim();
+          if (!text) return;
+          let ok = false;
+          try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              await navigator.clipboard.writeText(text);
+              ok = true;
+            }
+          } catch (_) {}
+          if (!ok) {
+            try {
+              const ta = document.createElement('textarea');
+              ta.value = text;
+              ta.style.position = 'fixed';
+              ta.style.opacity = '0';
+              document.body.appendChild(ta);
+              ta.select();
+              document.execCommand('copy');
+              document.body.removeChild(ta);
+              ok = true;
+            } catch (_) {}
+          }
+          if (ok) {
+            const oldHtml = btn.innerHTML;
+            btn.innerHTML = '<i class="ph ph-check" style="color:#10b981;"></i><span style="color:#10b981;font-weight:600;">已复制！</span>';
+            const oldBorder = textEl.style.borderColor;
+            textEl.style.borderColor = 'rgba(16,185,129,0.7)';
+            setTimeout(() => {
+              btn.innerHTML = oldHtml;
+              textEl.style.borderColor = oldBorder;
+            }, 1800);
+          } else {
+            alert('复制失败，请手动选中文本复制');
+          }
+        };
+
+        btn.addEventListener('click', doCopy);
+        textEl.addEventListener('click', doCopy);
+      }
+
+      setupAgPromptCopy('btnCopyAgPrompt1', 'agPromptText1');
+      setupAgPromptCopy('btnCopyAgPrompt2', 'agPromptText2');
+    }
+    fetchAntigravityStatus();
+  }
+
+  function updateAgModalParsedPreview(text) {
+    const card = document.getElementById('modalAgParsedCard');
+    const emailEl = document.getElementById('modalAgParsedEmail');
+    const expEl = document.getElementById('modalAgParsedExp');
+    const rtEl = document.getElementById('modalAgParsedRt');
+    if (!card) return;
+    if (!text || !text.trim()) {
+      card.style.display = 'none';
+      return;
+    }
+    try {
+      const data = JSON.parse(text.trim());
+      const token = data.token || {};
+      let email = data.id_token_email || data.email || '未知邮箱';
+      if (data.id_token) {
+        const parts = data.id_token.split('.');
+        if (parts.length >= 2) {
+          try {
+            const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+            if (payload.email) email = payload.email;
+          } catch (_) {}
+        }
+      }
+      if (emailEl) emailEl.textContent = email;
+      if (expEl) expEl.textContent = token.expiry ? token.expiry.slice(0, 19).replace('T', ' ') : '长期有效';
+      if (rtEl) rtEl.innerHTML = token.refresh_token ? '<span style="color:#10b981;">● 已具备 RT</span>' : '<span style="color:#eab308;">无 RT</span>';
+      card.style.display = 'block';
+
+      const nameInput = document.getElementById('modalAgName');
+      if (nameInput && !nameInput.value.trim() && email && email !== '未知邮箱') {
+        nameInput.value = email.split('@')[0];
+      }
+    } catch (_) {
+      card.style.display = 'none';
+    }
+  }
+
+  async function verifyAndExchangeAgRt() {
+    const rtInput = document.getElementById('modalAgRtInput');
+    const btn = document.getElementById('btnAgVerifyRt');
+    const credEl = document.getElementById('modalAgCredContent');
+    const rt = rtInput ? rtInput.value.trim() : '';
+    if (!rt) {
+      alert('请先粘贴 1// 开头的刷新令牌 (RT)！');
+      return;
+    }
+    if (btn) btn.innerHTML = '<i class="ph ph-spinner ph-spin"></i> 换取中…';
+    try {
+      const resp = await fetch('/api/antigravity/exchange_rt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rt })
+      });
+      const ret = await resp.json();
+      if (ret.ok) {
+        if (credEl) {
+          credEl.value = JSON.stringify(ret.credential, null, 2);
+          updateAgModalParsedPreview(credEl.value);
+        }
+        const nameInput = document.getElementById('modalAgName');
+        if (nameInput && !nameInput.value.trim()) {
+          nameInput.value = ret.name || (ret.email ? ret.email.split('@')[0] : 'Antigravity号');
+        }
+        if (btn) btn.innerHTML = '<i class="ph ph-check" style="color:#10b981;"></i> 换取成功';
+        setTimeout(() => { if (btn) btn.innerHTML = '<i class="ph ph-check"></i> 识别并换取'; }, 2000);
+      } else {
+        alert('RT 换取失败: ' + (ret.error || '未知错误'));
+        if (btn) btn.innerHTML = '<i class="ph ph-warning" style="color:#ef4444;"></i> 换取失败';
+        setTimeout(() => { if (btn) btn.innerHTML = '<i class="ph ph-check"></i> 识别并换取'; }, 2000);
+      }
+    } catch (e) {
+      alert('网络请求异常: ' + e.message);
+      if (btn) btn.innerHTML = '<i class="ph ph-check"></i> 识别并换取';
+    }
+  }
+
+  async function fillAgModalFromCurrent() {
+    try {
+      const res = await fetch('/api/antigravity/status');
+      if (!res.ok) return;
+      const data = await res.json();
+      const curr = data.current_active;
+      if (!curr || !curr.email || curr.email === '未登录') {
+        alert('当前客户端未检测到有效的已登录账号，请先在 Antigravity 登录！');
+        return;
+      }
+      const credEl = document.getElementById('modalAgCredContent');
+      const nameInput = document.getElementById('modalAgName');
+      if (nameInput && !nameInput.value.trim()) {
+        nameInput.value = curr.email.split('@')[0] || '当前主号';
+      }
+      if (credEl) {
+        credEl.value = JSON.stringify({
+          _notice: '将直接同步当前活跃客户端完整凭据',
+          email: curr.email
+        }, null, 2);
+      }
+      const card = document.getElementById('modalAgParsedCard');
+      const emailEl = document.getElementById('modalAgParsedEmail');
+      const expEl = document.getElementById('modalAgParsedExp');
+      const rtEl = document.getElementById('modalAgParsedRt');
+      if (emailEl) emailEl.textContent = curr.email;
+      if (expEl) expEl.textContent = curr.expiry ? curr.expiry.slice(0, 19).replace('T', ' ') : '有效';
+      if (rtEl) rtEl.innerHTML = curr.has_refresh ? '<span style="color:#10b981;">● 已具备 RT</span>' : '<span style="color:#eab308;">无 RT</span>';
+      if (card) card.style.display = 'block';
+    } catch (e) {
+      alert('读取当前登录态失败: ' + e.message);
+    }
+  }
+
+  window.openAgModal = function(profile) {
+    const overlay = document.getElementById('agModalOverlay');
+    const titleEl = document.getElementById('agModalTitle');
+    const idEl = document.getElementById('modalAgProfileId');
+    const nameEl = document.getElementById('modalAgName');
+    const rtInput = document.getElementById('modalAgRtInput');
+    const credEl = document.getElementById('modalAgCredContent');
+    const notesEl = document.getElementById('modalAgNotes');
+    const card = document.getElementById('modalAgParsedCard');
+    const btnDelModal = document.getElementById('btnAgDeleteFromModal');
+
+    if (!overlay) return;
+    if (profile) {
+      if (titleEl) titleEl.innerHTML = '<i class="ph ph-note-pencil" style="margin-right:6px;"></i>编辑 Antigravity 预设账号';
+      if (idEl) idEl.value = profile.id || '';
+      if (nameEl) nameEl.value = profile.name || '';
+      if (rtInput) rtInput.value = (profile.credential && profile.credential.token && profile.credential.token.refresh_token) || '';
+      if (credEl) credEl.value = profile.credential ? JSON.stringify(profile.credential, null, 2) : '';
+      if (notesEl) notesEl.value = profile.notes || '';
+      updateAgModalParsedPreview(credEl ? credEl.value : '');
+      if (btnDelModal) {
+        btnDelModal.style.display = 'inline-flex';
+        btnDelModal.onclick = () => {
+          window.closeAgModal();
+          window.deleteAgProfile(profile.id, encodeURIComponent(profile.name));
+        };
+      }
+    } else {
+      if (titleEl) titleEl.innerHTML = '<i class="ph ph-user-plus" style="margin-right:6px;"></i>添加 Antigravity 预设账号';
+      if (idEl) idEl.value = '';
+      if (nameEl) nameEl.value = '';
+      if (rtInput) rtInput.value = '';
+      if (credEl) credEl.value = '';
+      if (notesEl) notesEl.value = '';
+      if (card) card.style.display = 'none';
+      if (btnDelModal) btnDelModal.style.display = 'none';
+    }
+    overlay.style.display = 'flex';
+  };
+
+  window.openAgModalById = function(profileId) {
+    const profiles = (_lastAgStatus && _lastAgStatus.profiles) || [];
+    const target = profiles.find(p => p.id === profileId);
+    if (target) {
+      window.openAgModal(target);
+    }
+  };
+
+  window.closeAgModal = function() {
+    const overlay = document.getElementById('agModalOverlay');
+    if (overlay) overlay.style.display = 'none';
+  };
+
+  async function submitAgModal() {
+    const idEl = document.getElementById('modalAgProfileId');
+    const nameEl = document.getElementById('modalAgName');
+    const rtInput = document.getElementById('modalAgRtInput');
+    const credEl = document.getElementById('modalAgCredContent');
+    const notesEl = document.getElementById('modalAgNotes');
+
+    const name = nameEl ? nameEl.value.trim() : '';
+    const rt = rtInput ? rtInput.value.trim() : '';
+    const credText = credEl ? credEl.value.trim() : '';
+    const notes = notesEl ? notesEl.value.trim() : '';
+    const profileId = idEl ? idEl.value.trim() : '';
+
+    if (!name) {
+      alert('请输入预设名称！');
+      return;
+    }
+
+    if (credText.includes('_notice') && !profileId) {
+      window.closeAgModal();
+      window.saveCurrentAgPrompt(name);
+      return;
+    }
+
+    let payloadCred = rt || credText;
+    if (!payloadCred) {
+      alert('请输入 1// 刷新令牌 (RT) 或完整 JSON 凭据！');
+      return;
+    }
+
+    try {
+      const resp = await fetch('/api/antigravity/profile/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: profileId || undefined,
+          name: name,
+          credential: payloadCred,
+          notes: notes
+        })
+      });
+      const ret = await resp.json();
+      if (ret.ok) {
+        window.closeAgModal();
+        const resEl = document.getElementById('agSwitchResult');
+        if (resEl) resEl.innerHTML = `<span style="color:#10b981;"><i class="ph ph-check-circle"></i> ${ret.message || '保存成功'}</span>`;
+        fetchAntigravityStatus();
+      } else {
+        alert('保存失败: ' + (ret.error || '未知错误'));
+      }
+    } catch (e) {
+      alert('保存异常: ' + e.message);
+    }
+  }
+
+  window.saveCurrentAgPrompt = async function(prefilledName) {
+    const curr = _lastAgStatus && _lastAgStatus.current_active;
+    const defaultName = prefilledName || (curr && curr.email && curr.email !== '未登录' ? curr.email.split('@')[0] : '我的账号');
+    const name = prompt('请输入新预设名称（将当前 Antigravity 登录态存入预设矩阵）：', defaultName);
+    if (!name || !name.trim()) return;
+
+    const resEl = document.getElementById('agSwitchResult');
+    if (resEl) resEl.innerHTML = '<span style="color:#38bdf8;"><i class="ph ph-spinner ph-spin"></i> 正在读取并保存当前客户端凭据...</span>';
+    try {
+      const resp = await fetch('/api/antigravity/save_current', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name.trim() })
+      });
+      const ret = await resp.json();
+      if (ret.ok) {
+        if (resEl) resEl.innerHTML = `<span style="color:#10b981;"><i class="ph ph-check-circle"></i> ${ret.message}</span>`;
+        fetchAntigravityStatus();
+      } else {
+        if (resEl) resEl.innerHTML = `<span style="color:#ef4444;"><i class="ph ph-warning"></i> 保存失败: ${ret.error || '未知错误'}</span>`;
+      }
+    } catch (e) {
+      if (resEl) resEl.innerHTML = `<span style="color:#ef4444;"><i class="ph ph-warning"></i> 请求异常: ${e.message}</span>`;
+    }
+  };
+
+  async function restartAntigravityClient() {
+    if (!confirm('确认要优雅重启本地 Antigravity 客户端吗？')) return;
+    const resEl = document.getElementById('agSwitchResult');
+    if (resEl) resEl.innerHTML = '<span style="color:#38bdf8;"><i class="ph ph-spinner ph-spin"></i> 正在安全重启 Antigravity IDE 客户端...</span>';
+    try {
+      const resp = await fetch('/api/antigravity/restart', { method: 'POST' });
+      const ret = await resp.json();
+      if (ret.ok) {
+        if (resEl) resEl.innerHTML = `<span style="color:#10b981;"><i class="ph ph-check-circle"></i> ${ret.message || '已重启'}</span>`;
+        setTimeout(() => fetchAntigravityStatus(), 2000);
+      } else {
+        if (resEl) resEl.innerHTML = `<span style="color:#ef4444;"><i class="ph ph-warning"></i> 重启失败: ${ret.error || '未知错误'}</span>`;
+      }
+    } catch (e) {
+      if (resEl) resEl.innerHTML = `<span style="color:#ef4444;"><i class="ph ph-warning"></i> 重启请求异常: ${e.message}</span>`;
+    }
+  }
+
+  window.deleteAgProfile = async function(profileId, encodedName) {
+    const name = decodeURIComponent(encodedName || '');
+    if (!confirm(`确认从账号矩阵中删除预设「${name || profileId}」吗？`)) {
+      return;
+    }
+    const resEl = document.getElementById('agSwitchResult');
+    try {
+      const resp = await fetch('/api/antigravity/profile/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: profileId })
+      });
+      const ret = await resp.json();
+      if (ret.ok) {
+        if (resEl) resEl.innerHTML = `<span style="color:#10b981;"><i class="ph ph-check-circle"></i> ${ret.message || '已删除'}</span>`;
+        fetchAntigravityStatus();
+      } else {
+        alert('删除失败: ' + (ret.error || '未知错误'));
+      }
+    } catch (e) {
+      alert('删除异常: ' + e.message);
+    }
+  };
+
+  window.moveAgProfile = async function(profileId, direction) {
+    const resEl = document.getElementById('agSwitchResult');
+    try {
+      const resp = await fetch('/api/antigravity/profile/move', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: profileId, direction })
+      });
+      const ret = await resp.json();
+      if (ret.ok) {
+        fetchAntigravityStatus();
+      } else {
+        if (resEl) resEl.innerHTML = `<span style="color:#ef4444;"><i class="ph ph-warning"></i> 排序调整失败: ${ret.error || '未知错误'}</span>`;
+      }
+    } catch (e) {
+      if (resEl) resEl.innerHTML = `<span style="color:#ef4444;"><i class="ph ph-warning"></i> 请求异常: ${e.message}</span>`;
+    }
+  };
+
+  window.reorderAgProfiles = async function(orderIds) {
+    const resEl = document.getElementById('agSwitchResult');
+    try {
+      const resp = await fetch('/api/antigravity/reorder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order: orderIds })
+      });
+      const ret = await resp.json();
+      if (ret.ok) {
+        if (resEl) resEl.innerHTML = `<span style="color:#10b981;"><i class="ph ph-check-circle"></i> 排序已更新并保存</span>`;
+        fetchAntigravityStatus();
+      } else {
+        if (resEl) resEl.innerHTML = `<span style="color:#ef4444;"><i class="ph ph-warning"></i> 保存排序失败: ${ret.error || '未知错误'}</span>`;
+      }
+    } catch (e) {
+      if (resEl) resEl.innerHTML = `<span style="color:#ef4444;"><i class="ph ph-warning"></i> 保存排序异常: ${e.message}</span>`;
+    }
+  };
+
+  async function fetchAntigravityStatus() {
+    try {
+      const res = await fetch('/api/antigravity/status');
+      if (!res.ok) return;
+      const data = await res.json();
+      _lastAgStatus = data;
+      renderAntigravityStatus(data);
+    } catch (e) {
+      console.error('fetchAntigravityStatus error:', e);
+    }
+  }
+
+  function renderAntigravityStatus(data) {
+    if (!data || !data.ok) return;
+    const act = data.current_active || {};
+    const emailEl = document.getElementById('agActiveEmail');
+    const authMethodEl = document.getElementById('agActiveAuthMethod');
+    const expEl = document.getElementById('agActiveTokenExp');
+    const refEl = document.getElementById('agActiveRefresh');
+    const badgeEl = document.getElementById('agActiveBadge');
+    const procBadgeEl = document.getElementById('agProcessBadge');
+
+    const hasActiveLogin = act.email && act.email !== '未登录' && act.email !== '未知邮箱';
+
+    if (emailEl) emailEl.textContent = hasActiveLogin ? act.email : '未登录';
+    if (authMethodEl) authMethodEl.textContent = act.auth_method || 'consumer';
+
+    if (badgeEl) {
+      if (hasActiveLogin) {
+        badgeEl.textContent = '凭据活跃';
+        badgeEl.className = 'hud-badge online';
+      } else {
+        badgeEl.textContent = '未登录';
+        badgeEl.className = 'hud-badge offline';
+      }
+    }
+
+    if (procBadgeEl) {
+      if (act.process_running) {
+        procBadgeEl.textContent = `IDE 运行中 (${act.process_count || 1})`;
+        procBadgeEl.className = 'hud-badge online';
+      } else {
+        procBadgeEl.textContent = 'IDE 未运行';
+        procBadgeEl.className = 'hud-badge offline';
+      }
+    }
+
+    if (expEl) {
+      if (act.has_refresh) {
+        if (act.exp_minutes != null && act.exp_minutes > 0) {
+          expEl.innerHTML = `<span style="color:#10b981;">长期有效 <span style="opacity:0.8;font-size:12.5px;">(当前 60m 会话令牌剩 ${act.exp_minutes} 分钟 · RT 自动轮换)</span></span>`;
+        } else {
+          expEl.innerHTML = `<span style="color:#10b981;">长期有效 <span style="opacity:0.8;font-size:12.5px;">(RT 待命 · 请求时自动换新 60m 会话令牌)</span></span>`;
+        }
+      } else if (act.exp_minutes != null) {
+        if (act.exp_minutes > 0) {
+          expEl.innerHTML = `<span style="color:#eab308;">短期有效 (剩余 ${act.exp_minutes} 分钟 · 无 RT)</span>`;
+        } else {
+          expEl.innerHTML = `<span style="color:#ef4444;">已过期 (${Math.abs(act.exp_minutes)} 分钟前 · 无 RT)</span>`;
+        }
+      } else {
+        expEl.textContent = act.expiry ? act.expiry.slice(0, 19).replace('T', ' ') : '--';
+      }
+    }
+
+    if (refEl) {
+      refEl.innerHTML = act.has_refresh
+        ? '<span style="color:#10b981;">● 正常 (已具备 1// RT，支持静默续期)</span>'
+        : '<span style="color:#eab308;">无 RT (仅 Access Token)</span>';
+    }
+
+    // 渲染实时配额 HUD
+    renderAntigravityQuota(data.quota, act.process_running);
+
+    const profiles = data.profiles || [];
+    const countEl = document.getElementById('agMatrixCount');
+    if (countEl) countEl.textContent = `共 ${profiles.length} 个预设`;
+
+    // 渲染一键快速切换卡片
+    const quickList = document.getElementById('agQuickSwitchList');
+    if (quickList) {
+      if (profiles.length === 0) {
+        quickList.innerHTML = `
+          <div style="font-size:13px;opacity:0.6;padding:16px;text-align:center;">
+            暂无已存账号预设。<br>点击右上角「<strong>存当前登录为预设</strong>」或「<strong>添加预设账号</strong>」即可开始使用。
+          </div>
+        `;
+      } else {
+        quickList.innerHTML = profiles.map((p, i) => {
+          const info = p.info || {};
+          const isAct = p.is_active;
+          const emailText = info.email && info.email !== '未知邮箱' ? info.email : (p.email || p.id || '');
+          return `
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;background:${isAct ? 'rgba(56,189,248,0.12)' : 'rgba(255,255,255,0.04)'};border:1px solid ${isAct ? 'rgba(56,189,248,0.35)' : 'rgba(255,255,255,0.1)'};border-radius:8px;transition:all 0.15s;" onmouseover="if(!${isAct}){this.style.borderColor='rgba(56,189,248,0.5)';this.style.background='rgba(56,189,248,0.06)'}" onmouseout="if(!${isAct}){this.style.borderColor='rgba(255,255,255,0.1)';this.style.background='rgba(255,255,255,0.04)'}">
+              <div style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:1;min-width:0;" onclick="${isAct ? '' : `window.switchAntigravityTo('${p.id}')`}">
+                <i class="ph ${isAct ? 'ph-user-check' : 'ph-user'}" style="color:${isAct ? '#38bdf8' : 'inherit'};font-size:18px;flex-shrink:0;"></i>
+                <div style="display:flex;flex-direction:column;min-width:0;">
+                  <div style="display:flex;align-items:center;gap:6px;">
+                    <strong style="font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(p.name)}</strong>
+                    ${isAct ? '<span style="font-size:10.5px;opacity:0.85;background:rgba(56,189,248,0.25);color:#38bdf8;padding:1px 6px;border-radius:4px;flex-shrink:0;">使用中</span>' : ''}
+                  </div>
+                  <span style="font-size:11.5px;opacity:0.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(emailText)}</span>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;margin-left:8px;">
+                ${isAct ? '' : `<button class="btn-ghost sm" onclick="window.switchAntigravityTo('${p.id}')" title="一键切换到此账号"><i class="ph ph-lightning"></i> 切换</button>`}
+                <button class="btn-ghost sm" onclick="event.stopPropagation();window.moveAgProfile('${p.id}', 'up')" title="上移排序" ${i === 0 ? 'disabled style="opacity:0.25;cursor:not-allowed;"' : ''}><i class="ph ph-caret-up"></i></button>
+                <button class="btn-ghost sm" onclick="event.stopPropagation();window.moveAgProfile('${p.id}', 'down')" title="下移排序" ${i === profiles.length - 1 ? 'disabled style="opacity:0.25;cursor:not-allowed;"' : ''}><i class="ph ph-caret-down"></i></button>
+                <button class="btn-ghost sm" style="color:#ef4444;" onclick="event.stopPropagation();window.deleteAgProfile('${p.id}', '${encodeURIComponent(p.name)}')" title="从矩阵删除此账号"><i class="ph ph-trash"></i></button>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+    }
+
+    // 渲染已登记账号列表表格
+    const tbody = document.getElementById('agProfilesBody');
+    if (tbody) {
+      if (profiles.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="padding:16px;text-align:center;opacity:0.6;">暂无已登记账号预设，点击右上角即可添加</td></tr>';
+      } else {
+        tbody.innerHTML = profiles.map((p, i) => {
+          const info = p.info || {};
+          const isAct = p.is_active;
+          const statusBadge = isAct
+            ? '<span style="background:rgba(16,185,129,0.2);color:#10b981;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;">当前使用</span>'
+            : '<span style="background:rgba(255,255,255,0.06);opacity:0.6;padding:2px 8px;border-radius:999px;font-size:11px;">备用</span>';
+          let expText = '--';
+          if (info.has_refresh) {
+            expText = (isAct && info.exp_minutes != null && info.exp_minutes > 0)
+              ? `<span style="color:#10b981;" title="Google OAuth Access Token 每 60 分钟由 1// RT 自动静默续期">长期有效 (轮换剩 ${info.exp_minutes}m)</span>`
+              : `<span style="color:#10b981;" title="已具备 1// 刷新令牌，切换时自动换取最新 60 分钟会话令牌">长期有效 (1// RT 就绪)</span>`;
+          } else if (info.exp_minutes != null) {
+            expText = info.exp_minutes > 0 ? `<span style="color:#eab308;">短期剩 ${info.exp_minutes} 分钟</span>` : `<span style="color:#ef4444;">已过期 (无 RT)</span>`;
+          }
+          const emailDisplay = info.email && info.email !== '未知邮箱' ? info.email : (p.email || '--');
+          const notesDisplay = p.notes ? escapeHtml(p.notes) : '<span style="opacity:0.4;">--</span>';
+
+          return `
+            <tr draggable="true" data-profile-id="${p.id}" style="border-bottom:1px solid rgba(255,255,255,0.04);background:${isAct ? 'rgba(56,189,248,0.04)' : 'transparent'};transition:background 0.15s;">
+              <td style="padding:10px;white-space:nowrap;">
+                <span style="cursor:grab;display:inline-flex;align-items:center;padding:2px;opacity:0.6;margin-right:4px;" title="按住拖拽排序"><i class="ph ph-dots-six-vertical" style="font-size:15px;"></i></span>
+                <button class="btn-ghost sm" onclick="window.moveAgProfile('${p.id}', 'up')" title="上移" ${i === 0 ? 'disabled style="opacity:0.25;cursor:not-allowed;"' : ''}><i class="ph ph-arrow-up"></i></button>
+                <button class="btn-ghost sm" onclick="window.moveAgProfile('${p.id}', 'down')" title="下移" ${i === profiles.length - 1 ? 'disabled style="opacity:0.25;cursor:not-allowed;"' : ''}><i class="ph ph-arrow-down"></i></button>
+                <button class="btn-ghost sm" onclick="window.moveAgProfile('${p.id}', 'top')" title="置顶" ${i === 0 ? 'disabled style="opacity:0.25;cursor:not-allowed;"' : ''}><i class="ph ph-arrow-fat-line-up"></i></button>
+              </td>
+              <td style="padding:10px;">${statusBadge}</td>
+              <td style="padding:10px;font-weight:600;">${escapeHtml(p.name || p.id)}</td>
+              <td style="padding:10px;">${escapeHtml(emailDisplay)}</td>
+              <td style="padding:10px;">${expText}</td>
+              <td style="padding:10px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${notesDisplay}</td>
+              <td style="padding:10px;text-align:right;white-space:nowrap;">
+                ${isAct ? '<span style="font-size:12px;opacity:0.5;margin-right:8px;">生效中</span>' : `<button class="btn-ghost sm" onclick="window.switchAntigravityTo('${p.id}')" style="margin-right:6px;"><i class="ph ph-lightning"></i> 切换</button>`}
+                <button class="btn-ghost sm" onclick="window.openAgModalById('${p.id}')" title="编辑预设" style="margin-right:6px;"><i class="ph ph-note-pencil"></i> 编辑</button>
+                <button class="btn-ghost sm" style="color:#ef4444;" onclick="window.deleteAgProfile('${p.id}', '${encodeURIComponent(p.name)}')"><i class="ph ph-trash"></i> 删除</button>
+              </td>
+            </tr>
+          `;
+        }).join('');
+        initAgTableDragAndDrop(tbody);
+      }
+    }
+  }
+
+  function renderAntigravityQuota(quota, isRunning) {
+    const statusTextEl = document.getElementById('agQuotaStatusText');
+    const grid = document.getElementById('agQuotaBarsGrid');
+    if (!grid) return;
+
+    if (!isRunning) {
+      if (statusTextEl) statusTextEl.innerHTML = '<span style="color:var(--tx2);">IDE 未启动</span>';
+      grid.innerHTML = '<div style="padding:14px;text-align:center;font-size:13px;opacity:0.6;grid-column:1/-1;">Antigravity 客户端未运行，启动客户端后将自动读取官方实时配额</div>';
+      return;
+    }
+
+    if (!quota || !quota.groups || !quota.groups.length) {
+      if (statusTextEl) statusTextEl.innerHTML = '<span style="color:#eab308;">配额服务探活中…</span>';
+      grid.innerHTML = '<div style="padding:14px;text-align:center;font-size:13px;opacity:0.6;grid-column:1/-1;">正在连接 Language Server 配额端点…</div>';
+      return;
+    }
+
+    if (statusTextEl) statusTextEl.innerHTML = '<span style="color:#10b981;">● 实时在线</span>';
+
+    grid.innerHTML = quota.groups.map(g => {
+      const gName = g.displayName || '模型组';
+      const gDesc = g.description || '';
+      const buckets = g.buckets || [];
+
+      const bucketHtmls = buckets.map(b => {
+        const bName = b.displayName || b.bucketId || '限额';
+        const frac = b.remainingFraction != null ? b.remainingFraction : 1.0;
+        const pct = Math.round(frac * 100);
+        let barColor = '#10b981';
+        if (pct < 20) barColor = '#ef4444';
+        else if (pct < 50) barColor = '#f59e0b';
+
+        let resetHint = '';
+        if (b.resetTime) {
+          try {
+            const rDate = new Date(b.resetTime);
+            const diffHours = Math.round((rDate - new Date()) / 3600000);
+            resetHint = diffHours > 0 ? `约 ${diffHours} 小时后重置` : '即将重置';
+          } catch (_) {}
+        }
+
+        return `
+          <div style="margin-top:8px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;margin-bottom:4px;">
+              <span><strong>${escapeHtml(bName)}</strong> <span style="opacity:0.65;font-size:11px;">(${escapeHtml(resetHint)})</span></span>
+              <strong style="color:${barColor};font-size:13px;">${pct}%</strong>
+            </div>
+            <div style="background:rgba(255,255,255,0.08);border-radius:999px;height:7px;overflow:hidden;">
+              <div style="background:${barColor};width:${pct}%;height:100%;border-radius:999px;transition:width 0.3s ease;"></div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      return `
+        <div style="background:rgba(255,255,255,0.02);border:1px solid var(--border-color, rgba(255,255,255,0.06));border-radius:8px;padding:12px 14px;">
+          <div style="font-size:13.5px;font-weight:600;display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+            <i class="ph ph-sparkle" style="color:#a855f7;"></i> ${escapeHtml(gName)}
+          </div>
+          <div style="font-size:11.5px;opacity:0.65;margin-bottom:8px;">${escapeHtml(gDesc)}</div>
+          ${bucketHtmls}
+        </div>
+      `;
+    }).join('');
+  }
+
+  function initAgTableDragAndDrop(tbody) {
+    let draggedRow = null;
+    const rows = tbody.querySelectorAll('tr[draggable="true"]');
+    rows.forEach(row => {
+      row.addEventListener('dragstart', (e) => {
+        draggedRow = row;
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', row.getAttribute('data-profile-id') || '');
+        row.style.opacity = '0.4';
+      });
+      row.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        row.style.outline = '2px dashed #38bdf8';
+      });
+      row.addEventListener('dragleave', () => {
+        row.style.outline = '';
+      });
+      row.addEventListener('drop', (e) => {
+        e.preventDefault();
+        row.style.outline = '';
+        if (draggedRow && draggedRow !== row) {
+          const allRows = Array.from(tbody.querySelectorAll('tr[draggable="true"]'));
+          const fromIdx = allRows.indexOf(draggedRow);
+          const toIdx = allRows.indexOf(row);
+          if (fromIdx > -1 && toIdx > -1) {
+            const profileIds = allRows.map(r => r.getAttribute('data-profile-id'));
+            const movedId = profileIds.splice(fromIdx, 1)[0];
+            profileIds.splice(toIdx, 0, movedId);
+            window.reorderAgProfiles(profileIds);
+          }
+        }
+      });
+      row.addEventListener('dragend', () => {
+        row.style.opacity = '1';
+        rows.forEach(r => r.style.outline = '');
+        draggedRow = null;
+      });
+    });
+  }
+
+  window.switchAntigravityTo = async function(target) {
+    const resEl = document.getElementById('agSwitchResult');
+    if (resEl) resEl.innerHTML = '<span style="color:#38bdf8;"><i class="ph ph-spinner ph-spin"></i> 正在安全冷切换并重新拉起客户端...</span>';
+    try {
+      const resp = await fetch('/api/antigravity/switch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target, restart: true })
+      });
+      const ret = await resp.json();
+      if (ret.ok) {
+        if (resEl) resEl.innerHTML = `<span style="color:#10b981;"><i class="ph ph-check-circle"></i> ${ret.message}</span>`;
+        fetchAntigravityStatus();
+      } else {
+        if (resEl) resEl.innerHTML = `<span style="color:#ef4444;"><i class="ph ph-warning"></i> 切换失败: ${ret.error || '未知错误'}</span>`;
+      }
+    } catch (e) {
+      if (resEl) resEl.innerHTML = `<span style="color:#ef4444;"><i class="ph ph-warning"></i> 切换请求异常: ${e.message}</span>`;
+    }
+  };
+
   // 事件只绑一次：路由会反复进本页
   // --- 节点检测（Clash 节点 IP 质量检测）---
   const cnState = { filter: 'all', query: '', items: [], loaded: false, pollTimer: null, rendered: 0, scope: new Set() };
@@ -10816,6 +11564,7 @@
   const ROUTES = [
     '#/dashboard', '#/ai', '#/news', '#/rankings', '#/compare',
     '#/agent/codex',
+    '#/agent/antigravity',
     '#/games', '#/cleaner', '#/translate', '#/clipboard',
     '#/nodes', '#/status'
   ];
@@ -10828,6 +11577,7 @@
     '#/rankings': '#/ai-rankings',
     '#/compare': '#/ai-compare',
     '#/agent/codex': '#/agent/codex',
+    '#/agent/antigravity': '#/agent/antigravity',
     '#/games': '#/games',
     '#/translate': '#/translate',
     '#/clipboard': '#/clipboard',
@@ -10842,6 +11592,7 @@
     '#/rankings': 'pgRank',
     '#/compare': 'pgCompare',
     '#/agent/codex': 'pgCodex',
+    '#/agent/antigravity': 'pgAntigravity',
     '#/games': 'pgGames',
     '#/translate': 'pgTrans',
     '#/clipboard': 'pgClipboard',
@@ -10859,6 +11610,7 @@
     { id: 'ai-rankings', group: 'ai',       name: '模型天梯',         href: '#/rankings',    navRoute: '#/ai-rankings', desc: '模型能力排行榜与二级榜单' },
     { id: 'ai-compare',  group: 'ai',       name: '模型对比',         href: '#/compare',     navRoute: '#/ai-compare',  desc: '多模型横向对比' },
     { id: 'agent-codex', group: 'agent',    name: 'OpenAI 专区',      href: '#/agent/codex', navRoute: '#/agent/codex', desc: 'Codex Desktop 多账号独立登录态切换与冷重启保护' },
+    { id: 'agent-antigravity', group: 'agent', name: 'Antigravity 专区', href: '#/agent/antigravity', navRoute: '#/agent/antigravity', desc: 'Google Antigravity 桌面端多账号独立登录态管家，一键极速冷切换、RT 刷新令牌导入与配额监控' },
     { id: 'games',      group: 'games',    name: 'Epic喜加一',       href: '#/games',       navRoute: '#/games',       desc: 'Epic 每周免费游戏检测与半自动领取' },
     { id: 'cleaner',     group: 'tools',    name: '磁盘清理',         href: '#/cleaner',     navRoute: '#/cleaner',     desc: '智能磁盘扫描、规则分类与安全清理' },
     { id: 'nodes',       group: 'tools',    name: '节点检测',         href: '#/nodes',       navRoute: '#/nodes',       desc: 'Clash 节点测速与审计' },
@@ -10879,7 +11631,8 @@
   ];
   const MODULE_DEFAULT_INSTALLED = [
     'ai-briefing', 'ai-news', 'ai-rankings', 'ai-compare', 'translate', 'cleaner',
-    'agent-codex'
+    'agent-codex',
+    'agent-antigravity'
   ];
   const MODULE_LS_KEY = 'xyModulesInstalled';
   let moduleInstalledList = null; // null = 尚未从任何来源载入，按默认集处理
@@ -11159,6 +11912,8 @@
       aiAutoRefresh('compare', () => startRankingsRefresh(state.compareSource, document.getElementById('btnCompareRefresh'), reloadCompareAfterRefresh, { silent: true }));
     } else if (hash === '#/agent/codex') {
       initCodexPage();
+    } else if (hash === '#/agent/antigravity') {
+      initAntigravityPage();
     } else if (hash === '#/games') {
       if (window.initGamesPage) window.initGamesPage();
       if (window.loadEpic) window.loadEpic();
