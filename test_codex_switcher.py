@@ -3,6 +3,7 @@
 import json
 import os
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -180,6 +181,88 @@ class TestCodexSwitcher(unittest.TestCase):
         self.assertTrue(res_down["ok"])
         st4 = codex_switcher.get_codex_status()
         self.assertEqual([p["id"] for p in st4["profiles"]], ["p3", "p1", "p2"])
+
+    @patch("codex_switcher._build_proxy_opener")
+    def test_exchange_codex_rt(self, mock_opener):
+        # 构造 mock 的 token 返回
+        # JWT 包含 email 与 account_id
+        import base64
+        id_payload = base64.b64encode(json.dumps({"email": "rt_test@openai.com"}).encode()).decode().rstrip("=")
+        at_payload = base64.b64encode(json.dumps({
+            "https://api.openai.com/auth": {
+                "chatgpt_account_id": "acc-rt-123",
+                "chatgpt_plan_type": "pro"
+            }
+        }).encode()).decode().rstrip("=")
+
+        mock_resp_data = {
+            "access_token": f"header.{at_payload}.sig",
+            "refresh_token": "rt.new_rotated_token",
+            "id_token": f"header.{id_payload}.sig",
+            "expires_in": 3600
+        }
+        mock_resp = unittest.mock.MagicMock()
+        mock_resp.read.return_value = json.dumps(mock_resp_data).encode("utf-8")
+        mock_resp.__enter__.return_value = mock_resp
+        mock_opener.return_value.open.return_value = mock_resp
+
+        res = codex_switcher.exchange_codex_rt("rt.test_initial")
+        self.assertTrue(res["ok"])
+        self.assertEqual(res["email"], "rt_test@openai.com")
+        self.assertEqual(res["account_id"], "acc-rt-123")
+        self.assertEqual(res["plan_type"], "pro")
+        auth = res["auth_dict"]
+        self.assertEqual(auth["tokens"]["refresh_token"], "rt.new_rotated_token")
+
+    @patch("codex_switcher._build_proxy_opener")
+    def test_get_codex_quota(self, mock_opener):
+        # 预置一个带有 access_token 和 refresh_token 的 profile
+        import base64
+        at_payload = base64.b64encode(json.dumps({
+            "exp": int(time.time()) + 3600,
+            "https://api.openai.com/auth": {
+                "chatgpt_account_id": "acc-quota-test",
+                "chatgpt_plan_type": "plus"
+            }
+        }).encode()).decode().rstrip("=")
+        valid_auth = json.dumps({
+            "auth_mode": "chatgpt",
+            "tokens": {
+                "access_token": f"header.{at_payload}.sig",
+                "refresh_token": "rt.test",
+                "account_id": "acc-quota-test"
+            }
+        })
+        p_res = codex_switcher.add_or_update_profile("额度测试号", valid_auth, profile_id="p-quota")
+        self.assertTrue(p_res["ok"])
+
+        mock_usage_data = {
+            "plan_type": "plus",
+            "rate_limit": {
+                "primary_window": {
+                    "used_percent": 15,
+                    "limit_window_seconds": 18000,
+                    "reset_after_seconds": 12000,
+                    "reset_at": 1793633478
+                },
+                "secondary_window": {
+                    "used_percent": 45,
+                    "limit_window_seconds": 604800,
+                    "reset_after_seconds": 150000,
+                    "reset_at": 1793774355
+                }
+            }
+        }
+        mock_resp = unittest.mock.MagicMock()
+        mock_resp.read.return_value = json.dumps(mock_usage_data).encode("utf-8")
+        mock_resp.__enter__.return_value = mock_resp
+        mock_opener.return_value.open.return_value = mock_resp
+
+        q = codex_switcher.get_codex_quota("p-quota", force=True)
+        self.assertTrue(q["ok"])
+        self.assertEqual(q["plan_type"], "plus")
+        self.assertEqual(q["primary_window"]["used_percent"], 15)
+        self.assertEqual(q["secondary_window"]["used_percent"], 45)
 
 
 if __name__ == "__main__":

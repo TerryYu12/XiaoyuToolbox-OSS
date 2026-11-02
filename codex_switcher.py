@@ -19,9 +19,16 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
+import socket
 import subprocess
 import sys
+import threading
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 # 基础目录与系统主目录
@@ -48,6 +55,15 @@ CODEX_ACCOUNTS_FILE = BASE_DIR / "codex_accounts.json"
 # Codex++ 外部配置文件（若本机存在则双向同步兼容，不存在则忽略）
 CODEX_PLUS_SETTINGS = USER_HOME / ".codex-session-delete" / "settings.json"
 
+# OpenAI Codex 官方 OAuth 授权与配额查询常量
+OPENAI_OAUTH_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
+OPENAI_TOKEN_ENDPOINT = "https://auth.openai.com/oauth/token"
+OPENAI_USAGE_ENDPOINT = "https://chatgpt.com/backend-api/wham/usage"
+
+# 配额查询缓存与线程锁
+_quota_cache: dict[str, tuple[float, dict]] = {}
+_quota_lock = threading.Lock()
+
 PROFILE_ALIAS = {
     "big": "default",
     "default": "default",
@@ -62,6 +78,35 @@ PROFILE_ALIAS = {
 }
 
 
+def _build_proxy_opener(timeout: int = 15) -> urllib.request.OpenerDirector:
+    """构建支持系统代理/Clash 本地反代的 urllib opener。"""
+    proxies = {}
+    env_http = (
+        os.environ.get("https_proxy")
+        or os.environ.get("HTTPS_PROXY")
+        or os.environ.get("http_proxy")
+        or os.environ.get("HTTP_PROXY")
+        or os.environ.get("all_proxy")
+    )
+    if env_http:
+        proxies = {"http": env_http, "https": env_http}
+    else:
+        for port in (7890, 7897, 10808, 10809):
+            try:
+                s = socket.create_connection(("127.0.0.1", port), timeout=0.15)
+                s.close()
+                proxies = {"http": f"http://127.0.0.1:{port}", "https": f"http://127.0.0.1:{port}"}
+                break
+            except Exception:
+                pass
+
+    if proxies:
+        handler = urllib.request.ProxyHandler(proxies)
+    else:
+        handler = urllib.request.ProxyHandler()
+    return urllib.request.build_opener(handler)
+
+
 def _parse_jwt_payload(token_str: str) -> dict:
     if not token_str:
         return {}
@@ -69,7 +114,8 @@ def _parse_jwt_payload(token_str: str) -> dict:
         parts = token_str.split(".")
         if len(parts) >= 2:
             payload = parts[1] + "=" * (-len(parts[1]) % 4)
-            return json.loads(base64.b64decode(payload))
+            clean_b64 = payload.replace("-", "+").replace("_", "/")
+            return json.loads(base64.b64decode(clean_b64.encode("utf-8")).decode("utf-8", "ignore"))
     except Exception:
         pass
     return {}
@@ -78,9 +124,29 @@ def _parse_jwt_payload(token_str: str) -> dict:
 def parse_auth_info(auth_dict: dict) -> dict:
     tokens = auth_dict.get("tokens", {}) if isinstance(auth_dict, dict) else {}
     id_t = tokens.get("id_token", "")
-    info = _parse_jwt_payload(id_t)
-    email = info.get("email") or tokens.get("account_email") or "未知邮箱"
-    exp = info.get("exp")
+    at = tokens.get("access_token", "")
+    info = _parse_jwt_payload(id_t) if id_t else {}
+    at_info = _parse_jwt_payload(at) if at else {}
+
+    email = (
+        info.get("email")
+        or at_info.get("https://api.openai.com/profile", {}).get("email")
+        or at_info.get("email")
+        or tokens.get("account_email")
+        or "未知邮箱"
+    )
+    account_id = (
+        tokens.get("account_id")
+        or at_info.get("https://api.openai.com/auth", {}).get("chatgpt_account_id")
+        or info.get("https://api.openai.com/auth", {}).get("chatgpt_account_id")
+        or "未知ID"
+    )
+    plan_type = (
+        at_info.get("https://api.openai.com/auth", {}).get("chatgpt_plan_type")
+        or info.get("https://api.openai.com/auth", {}).get("chatgpt_plan_type")
+        or "plus"
+    )
+    exp = at_info.get("exp") or info.get("exp")
     exp_minutes = None
     is_expired = False
     if exp:
@@ -89,14 +155,292 @@ def parse_auth_info(auth_dict: dict) -> dict:
         is_expired = diff <= 0
 
     return {
-        "account_id": tokens.get("account_id", "未知ID"),
+        "account_id": account_id,
         "email": email,
+        "plan_type": plan_type,
         "exp_timestamp": exp,
         "exp_minutes": exp_minutes,
         "is_expired": is_expired,
         "has_refresh": bool(tokens.get("refresh_token")),
         "last_refresh": auth_dict.get("last_refresh")
     }
+
+
+def exchange_codex_rt(rt: str) -> dict:
+    """使用 rt_ 或 rt. 开头的 OpenAI Refresh Token 向官方端点交换最新凭据。"""
+    clean_rt = (rt or "").strip()
+    if not clean_rt:
+        return {"ok": False, "error": "刷新令牌 (RT) 不能为空"}
+
+    body = urllib.parse.urlencode({
+        "grant_type": "refresh_token",
+        "refresh_token": clean_rt,
+        "client_id": OPENAI_OAUTH_CLIENT_ID,
+    }).encode("utf-8")
+
+    req = urllib.request.Request(
+        OPENAI_TOKEN_ENDPOINT,
+        data=body,
+        headers={
+            "Content-Type": "application/x-www-form-urlencoded",
+            "User-Agent": "codex-cli",
+            "Accept": "application/json",
+        }
+    )
+
+    opener = _build_proxy_opener()
+    try:
+        with opener.open(req, timeout=20) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        err_msg = e.read().decode("utf-8", "replace")
+        return {"ok": False, "error": f"OpenAI OAuth 拒绝 ({e.code}): {err_msg[:200]}"}
+    except Exception as e:
+        return {"ok": False, "error": f"网络请求失败: {type(e).__name__} {e}"}
+
+    access_token = data.get("access_token")
+    if not access_token:
+        return {"ok": False, "error": "返回未包含有效 access_token"}
+
+    new_refresh_token = data.get("refresh_token") or clean_rt
+    id_token = data.get("id_token") or ""
+    expires_in = data.get("expires_in", 3600)
+
+    # 从 id_token 与 access_token 中解析 email 与 account_id
+    id_info = _parse_jwt_payload(id_token) if id_token else {}
+    acc_info = _parse_jwt_payload(access_token)
+
+    email = (
+        id_info.get("email")
+        or acc_info.get("https://api.openai.com/profile", {}).get("email")
+        or acc_info.get("email")
+        or "codex_user@openai.com"
+    )
+    account_id = (
+        acc_info.get("https://api.openai.com/auth", {}).get("chatgpt_account_id")
+        or id_info.get("https://api.openai.com/auth", {}).get("chatgpt_account_id")
+        or "未知ID"
+    )
+    plan_type = acc_info.get("https://api.openai.com/auth", {}).get("chatgpt_plan_type") or "plus"
+
+    auth_dict = {
+        "auth_mode": "chatgpt",
+        "OPENAI_API_KEY": None,
+        "tokens": {
+            "access_token": access_token,
+            "refresh_token": new_refresh_token,
+            "id_token": id_token,
+            "account_id": account_id
+        },
+        "last_refresh": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    }
+
+    return {
+        "ok": True,
+        "email": email,
+        "account_id": account_id,
+        "plan_type": plan_type,
+        "expires_in": expires_in,
+        "auth_dict": auth_dict,
+        "auth_content": json.dumps(auth_dict, ensure_ascii=False, indent=2),
+    }
+
+
+def refresh_codex_profile(profile_id: str | None = None) -> dict:
+    """使用对应账号的 refresh_token 换取新令牌，并原子更新 codex_accounts.json（若处于活跃态则同时更新 auth.json）。"""
+    data = load_profiles_data()
+    profiles = data.get("profiles", [])
+
+    target_profile = None
+    if profile_id:
+        for p in profiles:
+            if p.get("id") == profile_id:
+                target_profile = p
+                break
+        if not target_profile:
+            return {"ok": False, "error": f"找不到预设 ID '{profile_id}'"}
+    else:
+        # 刷新当前活跃账号
+        curr_auth = get_current_auth()
+        active_id = data.get("active_profile_id")
+        for p in profiles:
+            if p.get("id") == active_id:
+                target_profile = p
+                break
+        if not target_profile and curr_auth:
+            rt = curr_auth.get("tokens", {}).get("refresh_token")
+            if not rt:
+                return {"ok": False, "error": "当前 auth.json 无 refresh_token，无法续期"}
+            ex = exchange_codex_rt(rt)
+            if not ex.get("ok"):
+                return ex
+            AUTH_FILE.parent.mkdir(parents=True, exist_ok=True)
+            with open(AUTH_FILE, "w", encoding="utf-8") as f:
+                f.write(ex["auth_content"])
+            return {"ok": True, "message": f"成功刷新当前账号 {ex['email']}！", "email": ex["email"]}
+
+    if not target_profile:
+        return {"ok": False, "error": "未找到要刷新的预设"}
+
+    p_auth_str = target_profile.get("authContents", "")
+    if not p_auth_str:
+        return {"ok": False, "error": "该预设凭据内容为空"}
+
+    try:
+        p_auth = json.loads(p_auth_str)
+    except Exception as e:
+        return {"ok": False, "error": f"凭据解析失败: {e}"}
+
+    rt = p_auth.get("tokens", {}).get("refresh_token")
+    if not rt:
+        return {"ok": False, "error": f"预设「{target_profile.get('name')}」没有 refresh_token，无法自动续期"}
+
+    ex = exchange_codex_rt(rt)
+    if not ex.get("ok"):
+        return ex
+
+    target_profile["authContents"] = ex["auth_content"]
+    target_profile["updated_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    save_profiles_data(data)
+
+    # 如果刷新的账号就是当前客户端正激活的账号，同步回写到 ~/.codex/auth.json
+    curr_auth = get_current_auth()
+    if curr_auth:
+        curr_acc_id = curr_auth.get("tokens", {}).get("account_id")
+        if curr_acc_id == ex["account_id"] or target_profile.get("id") == data.get("active_profile_id"):
+            try:
+                AUTH_FILE.parent.mkdir(parents=True, exist_ok=True)
+                with open(AUTH_FILE, "w", encoding="utf-8") as f:
+                    f.write(ex["auth_content"])
+            except Exception:
+                pass
+
+    return {
+        "ok": True,
+        "message": f"已成功刷新「{target_profile.get('name')}」({ex['email']}) 凭据！",
+        "email": ex["email"],
+        "account_id": ex["account_id"]
+    }
+
+
+def get_codex_quota(profile_id: str | None = None, force: bool = False) -> dict:
+    """获取指定预设或当前活跃账号的 OpenAI Codex 实时额度（Wham / Usage 5h / 7d 窗口）。"""
+    target_auth = None
+    target_pid = profile_id
+    if profile_id:
+        data = load_profiles_data()
+        for p in data.get("profiles", []):
+            if p.get("id") == profile_id:
+                try:
+                    target_auth = json.loads(p.get("authContents", "{}"))
+                except Exception:
+                    pass
+                break
+    else:
+        target_auth = get_current_auth()
+        if not target_auth:
+            data = load_profiles_data()
+            active_id = data.get("active_profile_id")
+            for p in data.get("profiles", []):
+                if p.get("id") == active_id:
+                    target_pid = active_id
+                    try:
+                        target_auth = json.loads(p.get("authContents", "{}"))
+                    except Exception:
+                        pass
+                    break
+
+    if not target_auth or not isinstance(target_auth, dict):
+        return {"ok": False, "error": "未找到有效账号凭据"}
+
+    tokens = target_auth.get("tokens", {})
+    access_token = tokens.get("access_token", "")
+    account_id = tokens.get("account_id") or ""
+    refresh_token = tokens.get("refresh_token", "")
+
+    cache_key = account_id or (access_token[:20] if access_token else "default")
+    now = time.time()
+    if not force:
+        with _quota_lock:
+            cached = _quota_cache.get(cache_key)
+            if cached and (now - cached[0]) < 45:
+                return cached[1]
+
+    # 检查 access_token 是否过期，若过期且有 refresh_token，静默续期
+    info = parse_auth_info(target_auth)
+    if (info.get("is_expired") or not access_token) and refresh_token:
+        ref_res = refresh_codex_profile(target_pid)
+        if ref_res.get("ok"):
+            if target_pid:
+                d = load_profiles_data()
+                for p in d.get("profiles", []):
+                    if p.get("id") == target_pid:
+                        target_auth = json.loads(p.get("authContents", "{}"))
+                        tokens = target_auth.get("tokens", {})
+                        access_token = tokens.get("access_token", "")
+                        account_id = tokens.get("account_id") or ""
+                        break
+            else:
+                target_auth = get_current_auth() or target_auth
+                tokens = target_auth.get("tokens", {})
+                access_token = tokens.get("access_token", "")
+                account_id = tokens.get("account_id") or ""
+
+    if not access_token:
+        return {"ok": False, "error": "凭据缺少 access_token"}
+
+    req_headers = {
+        "Authorization": f"Bearer {access_token}",
+        "User-Agent": "codex-cli",
+        "Accept": "application/json",
+    }
+    if account_id and account_id != "未知ID":
+        req_headers["ChatGPT-Account-ID"] = account_id
+
+    req = urllib.request.Request(OPENAI_USAGE_ENDPOINT, headers=req_headers)
+    opener = _build_proxy_opener()
+
+    try:
+        with opener.open(req, timeout=12) as resp:
+            raw_data = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        if e.code == 401 and refresh_token:
+            ref_res = refresh_codex_profile(target_pid)
+            if ref_res.get("ok"):
+                return get_codex_quota(target_pid, force=True)
+        err_msg = e.read().decode("utf-8", "replace")
+        return {"ok": False, "error": f"额度查询失败 ({e.code}): {err_msg[:120]}"}
+    except Exception as e:
+        return {"ok": False, "error": f"网络连接异常: {type(e).__name__} {e}"}
+
+    plan_type = raw_data.get("plan_type", "plus")
+    rate_limit = raw_data.get("rate_limit") or {}
+    primary = rate_limit.get("primary_window") or {}
+    secondary = rate_limit.get("secondary_window") or {}
+
+    res = {
+        "ok": True,
+        "plan_type": plan_type,
+        "primary_window": {
+            "used_percent": primary.get("used_percent", 0),
+            "limit_window_seconds": primary.get("limit_window_seconds", 18000),
+            "reset_after_seconds": primary.get("reset_after_seconds", 0),
+            "reset_at": primary.get("reset_at"),
+        },
+        "secondary_window": {
+            "used_percent": secondary.get("used_percent", 0),
+            "limit_window_seconds": secondary.get("limit_window_seconds", 604800),
+            "reset_after_seconds": secondary.get("reset_after_seconds", 0),
+            "reset_at": secondary.get("reset_at"),
+        },
+        "code_review": raw_data.get("code_review_rate_limit"),
+        "updated_at": time.strftime("%H:%M:%S")
+    }
+
+    with _quota_lock:
+        _quota_cache[cache_key] = (now, res)
+
+    return res
 
 
 def get_current_auth() -> dict | None:
@@ -277,16 +621,30 @@ def get_codex_status() -> dict:
             except Exception:
                 pass
 
+    active_quota = None
+    if curr_info and curr_info.get("account_id"):
+        with _quota_lock:
+            cached = _quota_cache.get(curr_info["account_id"])
+            if cached:
+                active_quota = cached[1]
+
     profiles = []
     for p in data.get("profiles", []):
         pid = p.get("id")
         pname = p.get("name")
         auth_str = p.get("authContents")
         p_info = None
+        p_quota = None
         if auth_str:
             try:
                 p_auth = json.loads(auth_str)
                 p_info = parse_auth_info(p_auth)
+                acc_id = p_info.get("account_id")
+                if acc_id:
+                    with _quota_lock:
+                        c = _quota_cache.get(acc_id)
+                        if c:
+                            p_quota = c[1]
             except Exception:
                 pass
 
@@ -295,6 +653,7 @@ def get_codex_status() -> dict:
             "name": pname,
             "is_active": (pid == active_profile_id),
             "info": p_info,
+            "quota": p_quota,
             "has_auth": bool(auth_str),
             "updated_at": p.get("updated_at")
         })
@@ -303,6 +662,7 @@ def get_codex_status() -> dict:
         "ok": True,
         "active_profile_id": active_profile_id,
         "current_active": curr_info,
+        "active_quota": active_quota,
         "profiles": profiles
     }
 
@@ -354,11 +714,15 @@ def save_current_as_profile(name: str = "", profile_id: str | None = None) -> di
                 target = p
                 break
     else:
-        # 检查是否已存在相同 account_id 的预设进行更新
+        # 检查是否已存在相同 account_id 或相同 email 的预设进行更新
         for p in profiles:
             try:
                 pa = json.loads(p.get("authContents", "{}"))
-                if pa.get("tokens", {}).get("account_id") == acc_id and acc_id != "未知ID":
+                p_tokens = pa.get("tokens", {})
+                p_acc_id = p_tokens.get("account_id")
+                p_info = parse_auth_info(pa)
+                p_email = p_info.get("email")
+                if (acc_id != "未知ID" and p_acc_id == acc_id) or (email != "未知邮箱" and p_email == email):
                     target = p
                     break
             except Exception:
@@ -422,6 +786,20 @@ def add_or_update_profile(name: str, auth_content: str, profile_id: str | None =
             if p.get("id") == profile_id:
                 target = p
                 break
+    else:
+        # 自动查重，按 email 或 account_id 匹配
+        p_acc_id = auth_dict.get("tokens", {}).get("account_id")
+        for p in profiles:
+            try:
+                pa = json.loads(p.get("authContents", "{}"))
+                existing_info = parse_auth_info(pa)
+                if (email and email != "未知邮箱" and existing_info.get("email") == email) or (
+                    p_acc_id and p_acc_id != "未知ID" and pa.get("tokens", {}).get("account_id") == p_acc_id
+                ):
+                    target = p
+                    break
+            except Exception:
+                pass
 
     auth_str = json.dumps(auth_dict, ensure_ascii=False, indent=2)
 

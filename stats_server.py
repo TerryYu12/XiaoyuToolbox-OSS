@@ -1082,6 +1082,12 @@ class Handler(BaseHTTPRequestHandler):
                 import codex_switcher
                 return self._json(codex_switcher.get_codex_status())
 
+            if p == "/api/codex/quota":
+                import codex_switcher
+                pid = (q.get("id") or [""])[0]
+                force = (q.get("force") or ["0"])[0] in ("1", "true")
+                return self._json(codex_switcher.get_codex_quota(pid or None, force=force))
+
             # === Antigravity 专区（Google Antigravity 多账号切换与矩阵）===
             if p == "/api/antigravity/status":
                 import antigravity_switcher
@@ -1367,6 +1373,16 @@ class Handler(BaseHTTPRequestHandler):
                 direction = body.get("direction") or "up"
                 import codex_switcher
                 return self._json(codex_switcher.move_codex_profile(pid, direction))
+
+            if u.path == "/api/codex/exchange_rt":
+                rt = (body.get("rt") or "").strip()
+                import codex_switcher
+                return self._json(codex_switcher.exchange_codex_rt(rt))
+
+            if u.path == "/api/codex/refresh_token":
+                pid = (body.get("id") or "").strip()
+                import codex_switcher
+                return self._json(codex_switcher.refresh_codex_profile(pid or None))
 
             # === Antigravity 专区操作接口 ===
             if u.path == "/api/antigravity/switch":

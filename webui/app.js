@@ -7886,6 +7886,7 @@
   // OpenAI 专区与账号矩阵切换器 (Codex Switcher)
   // ==========================================
   let _lastCodexStatus = null;
+  let _lastCodexQuota = null;
 
   function initCodexPage() {
     if (!initCodexPage._done) {
@@ -7913,6 +7914,59 @@
 
       const btnFillCurrent = document.getElementById('btnCodexFillFromCurrent');
       if (btnFillCurrent) btnFillCurrent.addEventListener('click', () => fillCodexModalFromCurrent());
+
+      const btnVerifyRt = document.getElementById('btnCodexVerifyRt');
+      const rtInput = document.getElementById('modalCodexRtInput');
+      async function verifyAndExchangeCodexRt() {
+        if (!rtInput) return;
+        const rt = rtInput.value.trim();
+        if (!rt) {
+          alert('请先粘贴 OpenAI 刷新令牌 (RT)！');
+          return;
+        }
+        if (btnVerifyRt) {
+          btnVerifyRt.disabled = true;
+          btnVerifyRt.innerHTML = '<i class="ph ph-spinner ph-spin"></i> 换取中…';
+        }
+        try {
+          const resp = await fetch('/api/codex/exchange_rt', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ rt })
+          });
+          const ret = await resp.json();
+          if (ret.ok) {
+            const authEl = document.getElementById('modalCodexAuthContent');
+            if (authEl) {
+              authEl.value = ret.auth_content;
+              updateCodexModalParsedPreview(ret.auth_content);
+            }
+            const nameInput = document.getElementById('modalCodexName');
+            if (nameInput && !nameInput.value.trim() && ret.email) {
+              nameInput.value = ret.email.split('@')[0];
+            }
+            alert(`Token 换取成功！已自动识别账号：${ret.email} (${(ret.plan_type || 'Plus').toUpperCase()})`);
+          } else {
+            alert('RT 换取失败: ' + (ret.error || '未知错误'));
+          }
+        } catch (e) {
+          alert('换取请求异常: ' + e.message);
+        } finally {
+          if (btnVerifyRt) {
+            btnVerifyRt.disabled = false;
+            btnVerifyRt.innerHTML = '<i class="ph ph-check"></i> 识别并换取';
+          }
+        }
+      }
+      if (btnVerifyRt) btnVerifyRt.addEventListener('click', verifyAndExchangeCodexRt);
+      if (rtInput) {
+        rtInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            verifyAndExchangeCodexRt();
+          }
+        });
+      }
 
       const fileInput = document.getElementById('modalCodexFileInput');
       if (fileInput) {
@@ -8068,10 +8122,12 @@
     const idEl = document.getElementById('modalCodexProfileId');
     const nameEl = document.getElementById('modalCodexName');
     const authEl = document.getElementById('modalCodexAuthContent');
+    const rtInput = document.getElementById('modalCodexRtInput');
     const card = document.getElementById('modalCodexParsedCard');
     const btnDelModal = document.getElementById('btnDeleteFromModal');
 
     if (!overlay) return;
+    if (rtInput) rtInput.value = '';
     if (profile) {
       if (titleEl) titleEl.innerHTML = '<i class="ph ph-note-pencil" style="margin-right:6px;"></i>编辑 Codex 预设账号';
       if (idEl) idEl.value = profile.id || '';
@@ -8254,10 +8310,123 @@
       const data = await res.json();
       _lastCodexStatus = data;
       renderCodexStatus(data);
+      fetchCodexQuota();
     } catch (e) {
       console.error('fetchCodexStatus error:', e);
     }
   }
+
+  async function fetchCodexQuota() {
+    try {
+      const res = await fetch('/api/codex/quota');
+      if (!res.ok) return;
+      const data = await res.json();
+      _lastCodexQuota = data;
+      renderCodexQuota(data);
+    } catch (e) {
+      console.error('fetchCodexQuota error:', e);
+    }
+  }
+
+  function renderCodexQuota(quota) {
+    const grid = document.getElementById('codexQuotaBarsGrid');
+    const statusTextEl = document.getElementById('codexQuotaStatusText');
+    const planBadge = document.getElementById('codexPlanBadge');
+    if (!grid) return;
+
+    if (!quota || !quota.ok) {
+      if (statusTextEl) statusTextEl.innerHTML = '<span style="color:#eab308;">官方配额未连接</span>';
+      grid.innerHTML = '<div style="padding:14px;text-align:center;font-size:13px;opacity:0.6;grid-column:1/-1;">暂未获取到 OpenAI 官方配额数据（请检查网络或点击右上角刷新）</div>';
+      if (planBadge) planBadge.style.display = 'none';
+      return;
+    }
+
+    if (planBadge) {
+      planBadge.style.display = 'inline-flex';
+      planBadge.textContent = (quota.plan_type || 'Plus').toUpperCase();
+    }
+    if (statusTextEl) statusTextEl.innerHTML = `<span style="color:#10b981;">● 实时在线 (${quota.updated_at || '就绪'})</span>`;
+
+    const prim = quota.primary_window || {};
+    const sec = quota.secondary_window || {};
+
+    function formatReset(secCount, resetAt) {
+      if (secCount && secCount > 0) {
+        const hours = Math.floor(secCount / 3600);
+        const mins = Math.floor((secCount % 3600) / 60);
+        if (hours > 0) return `约 ${hours} 小时 ${mins} 分后重置`;
+        return `约 ${mins} 分钟后重置`;
+      }
+      if (resetAt) {
+        const diff = Math.round((resetAt * 1000 - Date.now()) / 1000);
+        if (diff > 0) {
+          const hours = Math.floor(diff / 3600);
+          const mins = Math.floor((diff % 3600) / 60);
+          if (hours > 0) return `约 ${hours} 小时 ${mins} 分后重置`;
+          return `约 ${mins} 分钟后重置`;
+        }
+      }
+      return '就绪';
+    }
+
+    function renderWindowCard(title, iconColor, desc, usedPct, resetHint) {
+      const used = Math.max(0, Math.min(100, Math.round(usedPct || 0)));
+      const remaining = 100 - used;
+      let barColor = '#10b981';
+      if (used >= 80) barColor = '#ef4444';
+      else if (used >= 50) barColor = '#f59e0b';
+
+      return `
+        <div style="background:rgba(255,255,255,0.02);border:1px solid var(--border-color, rgba(255,255,255,0.06));border-radius:8px;padding:12px 14px;">
+          <div style="font-size:13.5px;font-weight:600;display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+            <div style="display:flex;align-items:center;gap:6px;">
+              <i class="ph ph-sparkle" style="color:${iconColor};"></i> ${escapeHtml(title)}
+            </div>
+            <span style="font-size:11.5px;opacity:0.75;font-weight:normal;">剩余 ${remaining}%</span>
+          </div>
+          <div style="font-size:11.5px;opacity:0.65;margin-bottom:8px;">${escapeHtml(desc)}</div>
+          <div style="margin-top:8px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;margin-bottom:4px;">
+              <span>已用: <strong>${used}%</strong> <span style="opacity:0.65;font-size:11px;">(${escapeHtml(resetHint)})</span></span>
+              <strong style="color:${barColor};font-size:13px;">${used}%</strong>
+            </div>
+            <div style="background:rgba(255,255,255,0.08);border-radius:999px;height:7px;overflow:hidden;">
+              <div style="background:${barColor};width:${used}%;height:100%;border-radius:999px;transition:width 0.3s ease;"></div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    const primReset = formatReset(prim.reset_after_seconds, prim.reset_at);
+    const secReset = formatReset(sec.reset_after_seconds, sec.reset_at);
+
+    grid.innerHTML = `
+      ${renderWindowCard('5 小时会话窗口 (Primary Window)', '#10b981', '官方 5 小时高频突发并发额度，耗尽后进入短暂冷却', prim.used_percent, primReset)}
+      ${renderWindowCard('7 天周度额度 (Weekly Window)', '#3b82f6', '周度总体配额消耗进度，每周滚动重置', sec.used_percent, secReset)}
+    `;
+  }
+
+  window.refreshCodexToken = async function(profileId) {
+    const resEl = document.getElementById('codexSwitchResult');
+    if (resEl) resEl.innerHTML = '<span style="color:#339cff;"><i class="ph ph-spinner ph-spin"></i> 正在向 OpenAI 请求轮换刷新 Token...</span>';
+    try {
+      const resp = await fetch('/api/codex/refresh_token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: profileId })
+      });
+      const ret = await resp.json();
+      if (ret.ok) {
+        if (resEl) resEl.innerHTML = `<span style="color:#10b981;"><i class="ph ph-check-circle"></i> ${ret.message || 'Token 续期成功'}</span>`;
+        fetchCodexStatus();
+      } else {
+        alert('续期失败: ' + (ret.error || '未知错误'));
+      }
+    } catch (e) {
+      alert('续期请求异常: ' + e.message);
+    }
+  };
 
   function renderCodexStatus(data) {
     if (!data || !data.ok) return;
@@ -8283,9 +8452,15 @@
     }
 
     if (expEl) {
-      if (act.exp_minutes != null) {
+      if (act.has_refresh) {
+        if (act.exp_minutes != null && act.exp_minutes > 0) {
+          expEl.innerHTML = `<span style="color:#10b981;">有效 (剩余 ${act.exp_minutes} 分钟 · 支持 RT 续期)</span>`;
+        } else {
+          expEl.innerHTML = `<span style="color:#10b981;">支持 RT 续期 <span style="opacity:0.8;font-size:12px;">(点击表格「续期」即可刷新)</span></span>`;
+        }
+      } else if (act.exp_minutes != null) {
         if (act.exp_minutes > 0) {
-          expEl.innerHTML = `<span style="color:#10b981;">有效 (剩余 ${act.exp_minutes} 分钟)</span>`;
+          expEl.innerHTML = `<span style="color:#eab308;">短期有效 (剩余 ${act.exp_minutes} 分钟 · 无 RT)</span>`;
         } else {
           expEl.innerHTML = `<span style="color:#ef4444;">已过期 (${Math.abs(act.exp_minutes)} 分钟前)</span>`;
         }
@@ -8294,7 +8469,12 @@
       }
     }
     if (refEl) {
-      refEl.innerHTML = act.has_refresh ? '<span style="color:#10b981;">● 正常 (已具备)</span>' : '<span style="color:#eab308;">无</span>';
+      refEl.innerHTML = act.has_refresh ? '<span style="color:#10b981;">● 正常 (已具备 RT，支持自动续期)</span>' : '<span style="color:#eab308;">无 RT (仅 Access Token)</span>';
+    }
+
+    // 渲染配额
+    if (data.active_quota) {
+      renderCodexQuota(data.active_quota);
     }
 
     const profiles = data.profiles || [];
@@ -8315,16 +8495,20 @@
           const info = p.info || {};
           const isAct = p.is_active;
           const emailText = info.email && info.email !== '未知邮箱' ? info.email : (p.id || '');
+          const quotaPill = (isAct && _lastCodexQuota && _lastCodexQuota.ok && _lastCodexQuota.primary_window)
+            ? `<span style="font-size:10.5px;background:rgba(16,185,129,0.2);color:#10b981;padding:1px 6px;border-radius:4px;flex-shrink:0;">5h剩 ${100 - (_lastCodexQuota.primary_window.used_percent || 0)}%</span>`
+            : '';
           return `
             <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;background:${isAct ? 'rgba(51,156,255,0.12)' : 'rgba(255,255,255,0.04)'};border:1px solid ${isAct ? 'rgba(51,156,255,0.35)' : 'rgba(255,255,255,0.1)'};border-radius:8px;transition:all 0.15s;" onmouseover="if(!${isAct}){this.style.borderColor='rgba(51,156,255,0.5)';this.style.background='rgba(51,156,255,0.06)'}" onmouseout="if(!${isAct}){this.style.borderColor='rgba(255,255,255,0.1)';this.style.background='rgba(255,255,255,0.04)'}">
               <div style="display:flex;align-items:center;gap:10px;cursor:pointer;flex:1;min-width:0;" onclick="${isAct ? '' : `window.switchCodexTo('${p.id}')`}">
                 <i class="ph ${isAct ? 'ph-user-check' : 'ph-user'}" style="color:${isAct ? '#339cff' : 'inherit'};font-size:18px;flex-shrink:0;"></i>
                 <div style="display:flex;flex-direction:column;min-width:0;">
                   <div style="display:flex;align-items:center;gap:6px;">
-                    <strong style="font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${p.name}</strong>
+                    <strong style="font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(p.name)}</strong>
                     ${isAct ? '<span style="font-size:10.5px;opacity:0.85;background:rgba(51,156,255,0.25);color:#339cff;padding:1px 6px;border-radius:4px;flex-shrink:0;">当前使用中</span>' : ''}
+                    ${quotaPill}
                   </div>
-                  <span style="font-size:11.5px;opacity:0.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${emailText}</span>
+                  <span style="font-size:11.5px;opacity:0.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(emailText)}</span>
                 </div>
               </div>
               <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;margin-left:8px;">
@@ -8339,7 +8523,7 @@
       }
     }
 
-    // 动态渲染已登记账号列表表格（支持拖拽排序 + 上下置顶按钮 + 编辑/删除）
+    // 动态渲染已登记账号列表表格（支持拖拽排序 + 上下置顶按钮 + 编辑/删除/续期）
     const tbody = document.getElementById('codexProfilesBody');
     if (tbody) {
       if (profiles.length === 0) {
@@ -8355,6 +8539,9 @@
           if (info.exp_minutes != null) {
             expText = info.exp_minutes > 0 ? `剩 ${info.exp_minutes} 分钟` : `<span style="color:#ef4444;">已过期</span>`;
           }
+          if (info.has_refresh) {
+            expText += ' <span style="color:#10b981;font-size:10.5px;">(有RT)</span>';
+          }
           const emailDisplay = info.email && info.email !== '未知邮箱' ? info.email : '--';
           const accIdDisplay = info.account_id && info.account_id !== '未知ID'
             ? (info.account_id.length > 13 ? info.account_id.slice(0, 13) + '...' : info.account_id)
@@ -8369,12 +8556,13 @@
                 <button class="btn-ghost sm" onclick="window.moveCodexProfile('${p.id}', 'top')" title="置顶" ${i === 0 ? 'disabled style="opacity:0.25;cursor:not-allowed;"' : ''}><i class="ph ph-arrow-fat-line-up"></i></button>
               </td>
               <td style="padding:10px;">${statusBadge}</td>
-              <td style="padding:10px;font-weight:600;">${p.name || p.id}</td>
-              <td style="padding:10px;">${emailDisplay}</td>
-              <td style="padding:10px;"><code style="font-size:11px;opacity:0.8;">${accIdDisplay}</code></td>
+              <td style="padding:10px;font-weight:600;">${escapeHtml(p.name || p.id)}</td>
+              <td style="padding:10px;">${escapeHtml(emailDisplay)}</td>
+              <td style="padding:10px;"><code style="font-size:11px;opacity:0.8;">${escapeHtml(accIdDisplay)}</code></td>
               <td style="padding:10px;">${expText}</td>
               <td style="padding:10px;text-align:right;white-space:nowrap;">
                 ${isAct ? '<span style="font-size:12px;opacity:0.5;margin-right:8px;">生效中</span>' : `<button class="btn-ghost sm" onclick="window.switchCodexTo('${p.id}')" style="margin-right:6px;"><i class="ph ph-lightning"></i> 切换</button>`}
+                ${info.has_refresh ? `<button class="btn-ghost sm" onclick="window.refreshCodexToken('${p.id}')" title="用 RT 换取最新 Token" style="margin-right:6px;"><i class="ph ph-arrows-clockwise"></i> 续期</button>` : ''}
                 <button class="btn-ghost sm" onclick="window.openCodexModalById('${p.id}')" title="编辑预设" style="margin-right:6px;"><i class="ph ph-note-pencil"></i> 编辑</button>
                 <button class="btn-ghost sm" style="color:#ef4444;" onclick="window.deleteCodexProfile('${p.id}', '${encodeURIComponent(p.name)}')"><i class="ph ph-trash"></i> 删除</button>
               </td>

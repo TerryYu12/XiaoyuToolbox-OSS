@@ -25,7 +25,7 @@
     <header class="topbar">
       <span class="logo" style="background:none;overflow:hidden"><img src="icons/app_logo.svg" width="22" height="22" alt="" style="display:block;border-radius:5px"></span>
       <span class="app-name">小宇工具箱</span>
-      <span id="appVersionBadge" class="ver-tag" title="当前工具箱版本">v2.5.7</span>
+      <span id="appVersionBadge" class="ver-tag" title="当前工具箱版本">v2.5.8</span>
       <span id="updateAvailBadge" class="update-badge" style="display:none;" title="发现新版本，点击查看"><i class="ph ph-sparkle-fill"></i><span id="updateAvailText">新版可用</span></span>
       <span class="port-tag"><i class="ph ph-circle-fill"></i>127.0.0.1:8790</span>
       <span class="tb-space"></span>
@@ -569,6 +569,26 @@
                 <div style="font-size:13px;opacity:0.6;padding:12px;text-align:center;">正在读取账号矩阵…</div>
               </div>
               <div id="codexSwitchResult" style="margin-top:10px;font-size:13px;color:#10b981;min-height:18px;"></div>
+            </div>
+          </div>
+
+          <!-- 实时官方配额 (Wham / Usage Quota) -->
+          <div class="hud-card" style="padding:16px 18px;border-radius:12px;background:var(--bg-card, rgba(255,255,255,0.03));border:1px solid var(--border-color, rgba(255,255,255,0.08));margin-bottom:16px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+              <div>
+                <h3 style="margin:0;font-size:15px;font-weight:600;display:flex;align-items:center;gap:6px;">
+                  <i class="ph ph-chart-donut" style="color:#10b981;font-size:17px;"></i>当前账号实时官方配额 (Wham / Usage)
+                </h3>
+                <p style="margin:4px 0 0;font-size:12px;opacity:0.7;">直连 OpenAI ChatGPT 官方配额接口，实时监控 5 小时并发窗口与周度限额使用率及重置时间。</p>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span class="hud-badge online" id="codexPlanBadge" style="display:none;">Plus</span>
+                <span id="codexQuotaStatusText" style="font-size:12px;opacity:0.7;">检查配额中…</span>
+              </div>
+            </div>
+
+            <div id="codexQuotaBarsGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+              <div style="padding:12px;text-align:center;font-size:13px;opacity:0.6;grid-column:1/-1;">正在读取 OpenAI 官方配额…</div>
             </div>
           </div>
 
@@ -1651,6 +1671,16 @@
               <input type="file" id="modalCodexFileInput" accept=".json" style="display:none;">
             </label>
           </div>
+        </div>
+
+        <!-- RT 刷新令牌输入区 -->
+        <div class="modal-form-group" id="codexRtInputGroup">
+          <label class="modal-label">刷新令牌 (RT) <span style="font-size:11px;opacity:0.6;">（粘贴 rt. 或 rt_ 开头的 OpenAI Refresh Token）</span></label>
+          <div style="display:flex;gap:8px;">
+            <input type="text" id="modalCodexRtInput" class="hud-input font-mono" placeholder="rt.1..." style="font-size:12px;flex:1;">
+            <button type="button" class="btn-hud-primary sm" id="btnCodexVerifyRt" style="white-space:nowrap;"><i class="ph ph-check"></i> 识别并换取</button>
+          </div>
+          <div style="font-size:11.5px;margin-top:4px;color:var(--tx2);">支持导入来自 Codex CLI、Hermes 或第三方工具的 Refresh Token，点击自动换取最新凭据并填入。</div>
         </div>
 
         <div class="modal-form-group">
