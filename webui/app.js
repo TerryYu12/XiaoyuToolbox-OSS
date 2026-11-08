@@ -11537,9 +11537,6 @@
   let cleanerInitialized = false;
   let cleanerAiReportText = '';
   let cleanerAiReportPath = '';
-  let snifferActive = false;
-  let snifferCurrentData = null;
-  let snifferSelectedNode = null;
 
   const cleanerH = n => {
     const u = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -11564,12 +11561,8 @@
       if (btnWinapp2) btnWinapp2.onclick = openCleanerWinapp2;
       const btnElevate = document.getElementById('cleanerBtnElevate');
       if (btnElevate) btnElevate.onclick = cleanerElevate;
-      const btnToggleSniffer = document.getElementById('cleanerBtnToggleSniffer');
-      if (btnToggleSniffer) btnToggleSniffer.onclick = () => toggleCleanerSniffer();
       const btnLaunchNative = document.getElementById('cleanerBtnLaunchNative');
       if (btnLaunchNative) btnLaunchNative.onclick = () => launchNativeSpaceSniffer();
-      const btnSnifferNativeLaunch = document.getElementById('cleanerSnifferNativeLaunch');
-      if (btnSnifferNativeLaunch) btnSnifferNativeLaunch.onclick = () => launchNativeSpaceSniffer();
       const btnAiReport = document.getElementById('cleanerBtnAiReport');
       if (btnAiReport) btnAiReport.onclick = openCleanerAiReport;
       const btnCloseAi = document.getElementById('cleanerBtnCloseAiModal');
@@ -11578,18 +11571,6 @@
       if (btnCopyAi) btnCopyAi.onclick = copyCleanerAiReport;
       const btnDlAi = document.getElementById('cleanerBtnDownloadAiMd');
       if (btnDlAi) btnDlAi.onclick = downloadCleanerAiReport;
-      const btnSnifferClose = document.getElementById('cleanerSnifferClose');
-      if (btnSnifferClose) btnSnifferClose.onclick = () => toggleCleanerSniffer(false);
-      const btnSnifferAnalyze = document.getElementById('cleanerSnifferAnalyze');
-      if (btnSnifferAnalyze) btnSnifferAnalyze.onclick = runCleanerSniffer;
-      const btnSnifferBack = document.getElementById('cleanerSnifferBack');
-      if (btnSnifferBack) btnSnifferBack.onclick = snifferGoUp;
-      const btnSnifferOpenExp = document.getElementById('cleanerSnifferOpenExplorer');
-      if (btnSnifferOpenExp) btnSnifferOpenExp.onclick = openSnifferInExplorer;
-      const snifferInput = document.getElementById('cleanerSnifferInput');
-      if (snifferInput) {
-        snifferInput.onkeydown = e => { if (e.key === 'Enter') runCleanerSniffer(); };
-      }
       const chkAll = document.getElementById('cleanerChkAll');
       if (chkAll) chkAll.onchange = e => toggleCleanerAll(e.target.checked);
       const btnSelSafe = document.getElementById('cleanerBtnSelSafe');
@@ -12394,100 +12375,21 @@
   }
 
   // ============================================================
-  // SpaceSniffer 空间透视矩形树图交互引擎
+  // SpaceSniffer 官方原生磁盘空间透视调用器
   // ============================================================
-  function toggleCleanerSniffer(show) {
-    if (show === undefined) snifferActive = !snifferActive;
-    else snifferActive = !!show;
-
-    const sView = document.getElementById('cleanerSnifferView');
-    const mainView = document.getElementById('cleanerMain');
-    const cardsView = document.getElementById('cleanerCards');
-    const emptyView = document.getElementById('cleanerEmpty');
-    const dSummView = document.getElementById('cleanerDriveSumm');
-    const actBar = document.getElementById('cleanerActionbar');
-    const btnToggle = document.getElementById('cleanerBtnToggleSniffer');
-
-    if (snifferActive) {
-      if (sView) sView.style.display = 'block';
-      if (mainView) mainView.style.display = 'none';
-      if (cardsView) cardsView.style.display = 'none';
-      if (emptyView) emptyView.style.display = 'none';
-      if (dSummView) dSummView.style.display = 'none';
-      if (actBar) actBar.style.display = 'none';
-      if (btnToggle) {
-        btnToggle.classList.add('active');
-        btnToggle.innerHTML = '<i class="ph ph-list-dashes"></i> 返回清理列表';
-      }
-      renderSnifferDrivePills();
-      if (!snifferCurrentData) {
-        let initialPath = 'F:\\AI-hub\\workroom';
-        if (cleanerDrives && cleanerDrives.length > 0) {
-          const d = cleanerDrives.find(x => x.drive.toUpperCase().startsWith('F')) || cleanerDrives[0];
-          initialPath = d.drive;
-        }
-        const input = document.getElementById('cleanerSnifferInput');
-        if (input) input.value = initialPath;
-        loadSnifferTree(initialPath);
-      }
-    } else {
-      if (sView) sView.style.display = 'none';
-      if (cardsView) cardsView.style.display = cleanerCands.length ? 'grid' : 'none';
-      if (mainView) mainView.style.display = cleanerCands.length ? 'block' : 'none';
-      if (emptyView) emptyView.style.display = cleanerCands.length ? 'none' : 'block';
-      if (dSummView) dSummView.style.display = 'block';
-      if (actBar) actBar.style.display = cleanerCands.length ? 'block' : 'none';
-      if (btnToggle) {
-        btnToggle.classList.remove('active');
-        btnToggle.innerHTML = '<i class="ph ph-squares-four"></i> SpaceSniffer 空间透视';
-      }
-    }
-  }
-
-  function renderSnifferDrivePills() {
-    const box = document.getElementById('cleanerSnifferDrives');
-    if (!box || !cleanerDrives) return;
-    box.innerHTML = cleanerDrives.map(d =>
-      `<button type="button" class="sniffer-drv-btn" onclick="selectSnifferDrive('${d.drive}')">${d.drive[0]}: 盘</button>`
-    ).join('');
-  }
-  window.selectSnifferDrive = function(drv) {
-    const input = document.getElementById('cleanerSnifferInput');
-    if (input) input.value = drv;
-    loadSnifferTree(drv);
-  };
-
-  function runCleanerSniffer() {
-    const input = document.getElementById('cleanerSnifferInput');
-    const p = (input ? input.value : '').trim();
-    if (!p) { alert('请输入有效分析路径'); return; }
-    loadSnifferTree(p);
-  }
-
-  function snifferGoUp() {
-    if (!snifferCurrentData || !snifferCurrentData.path) return;
-    const parts = snifferCurrentData.path.replace(/[\\/]+$/, '').split(/[\\/]/);
-    if (parts.length <= 1) return;
-    parts.pop();
-    let upPath = parts.join('\\');
-    if (upPath.length === 2 && upPath[1] === ':') upPath += '\\';
-    if (!upPath) return;
-    const input = document.getElementById('cleanerSnifferInput');
-    if (input) input.value = upPath;
-    loadSnifferTree(upPath);
-  }
-
-  const snifferCache = new Map();
-
   async function launchNativeSpaceSniffer(targetPath) {
     let p = (targetPath || '').trim();
     if (!p) {
-      const input = document.getElementById('cleanerSnifferInput');
-      p = input ? input.value.trim() : '';
-    }
-    if (!p) {
-      const d = (cleanerDrives && cleanerDrives.length) ? cleanerDrives[0].drive : 'F:\\';
-      p = d;
+      const customInput = document.getElementById('cleanerCustomRoot');
+      if (customInput && customInput.value.trim()) {
+        p = customInput.value.trim();
+      } else if (cleanerRoots && cleanerRoots.length) {
+        p = cleanerRoots[0];
+      } else if (cleanerDrives && cleanerDrives.length) {
+        p = cleanerDrives[0].drive;
+      } else {
+        p = 'F:\\';
+      }
     }
     try {
       const resp = await fetch('/api/cleaner/spacesniffer/native', {
@@ -12497,7 +12399,7 @@
       });
       const j = await resp.json();
       if (resp.ok && j.ok) {
-        console.log('[spacesniffer] Native launched:', j.message);
+        console.log('[spacesniffer] Native launched for', p, 'PID:', j.pid);
       } else {
         alert(j.error || j.message || '调起官方原生 SpaceSniffer 失败');
       }
@@ -12506,342 +12408,6 @@
     }
   }
   window.launchNativeSpaceSniffer = launchNativeSpaceSniffer;
-  window.launchNativeSnifferForSelected = function() {
-    if (snifferSelectedNode && snifferSelectedNode.path) {
-      launchNativeSpaceSniffer(snifferSelectedNode.path);
-    } else {
-      launchNativeSpaceSniffer();
-    }
-  };
-
-  async function loadSnifferTree(customPath) {
-    const input = document.getElementById('cleanerSnifferInput');
-    const p = customPath || (input ? input.value.trim() : '');
-    if (!p) return;
-    if (input) input.value = p;
-
-    // 内存极速缓存命中：0ms 瞬间切换，无任何网络等待与卡顿
-    if (snifferCache.has(p)) {
-      const cached = snifferCache.get(p);
-      snifferCurrentData = cached;
-      renderSnifferBreadcrumbs(cached);
-      renderTreemapCanvas(cached);
-      selectSnifferNode(cached);
-      return;
-    }
-
-    const depthEl = document.getElementById('cleanerSnifferDepth');
-    const minSizeEl = document.getElementById('cleanerSnifferMinSize');
-    const depth = depthEl ? parseInt(depthEl.value, 10) : 1;
-    const minSize = minSizeEl ? parseInt(minSizeEl.value, 10) : 512 * 1024;
-
-    const loader = document.getElementById('cleanerSnifferLoading');
-    if (loader) loader.style.display = 'flex';
-
-    try {
-      const resp = await fetch('/api/cleaner/spacesniffer/tree', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: p, depth: depth, min_size: minSize })
-      });
-      if (resp.ok) {
-        const data = await resp.json();
-        if (loader) loader.style.display = 'none';
-        if (data.error) {
-          alert('SpaceSniffer 错误: ' + data.error);
-          return;
-        }
-        snifferCache.set(p, data);
-        snifferCurrentData = data;
-        renderSnifferBreadcrumbs(data);
-        renderTreemapCanvas(data);
-        selectSnifferNode(data);
-        return;
-      } else {
-        const errJson = await resp.json().catch(() => ({}));
-        console.warn('SpaceSniffer tree API returned non-OK:', resp.status, errJson);
-        if (resp.status === 404) {
-          if (loader) loader.style.display = 'none';
-          alert('后端暂未加载 SpaceSniffer 接口 (404)。请确保已重启至最新版小宇工具箱。');
-        }
-      }
-    } catch (e) {
-      console.warn('SpaceSniffer tree API fetch error:', e);
-    }
-
-    if (loader) loader.style.display = 'none';
-    if (!cleanerCands || !cleanerCands.length) {
-      const emptyTree = {
-        name: p,
-        path: p,
-        size: 0,
-        size_h: '0 B',
-        is_dir: true,
-        category: 'general',
-        percent: 100,
-        file_count: 0,
-        children: []
-      };
-      snifferCurrentData = emptyTree;
-      renderSnifferBreadcrumbs(emptyTree);
-      renderTreemapCanvas(emptyTree);
-      selectSnifferNode(emptyTree);
-      return;
-    }
-    const fallbackTree = buildFallbackTreemap(p);
-    snifferCurrentData = fallbackTree;
-    renderSnifferBreadcrumbs(fallbackTree);
-    renderTreemapCanvas(fallbackTree);
-    selectSnifferNode(fallbackTree);
-  }
-
-  function buildFallbackTreemap(rootPath) {
-    const norm = rootPath.toLowerCase().replace(/[\\/]+$/, '');
-    const matched = cleanerCands.filter(c => (c.path || '').toLowerCase().startsWith(norm));
-    const children = matched.slice(0, 30).map(c => ({
-      name: c.path.split(/[\\/]/).pop() || c.title,
-      path: c.path,
-      size: c.size,
-      size_h: c.size_h,
-      is_dir: c.is_dir,
-      category: c.category || (c.is_project ? 'project' : 'cache'),
-      percent: 0,
-      file_count: 1
-    }));
-    const total = children.reduce((s, c) => s + c.size, 0) || 1024 * 1024;
-    children.forEach(c => c.percent = ((c.size / total) * 100).toFixed(1));
-    return {
-      name: rootPath,
-      path: rootPath,
-      size: total,
-      size_h: cleanerH(total),
-      is_dir: true,
-      category: 'general',
-      percent: 100,
-      file_count: children.length,
-      children: children
-    };
-  }
-
-  function renderSnifferBreadcrumbs(data) {
-    const wrap = document.getElementById('cleanerSnifferCrumbs');
-    if (!wrap || !data) return;
-    const parts = data.path.replace(/[\\/]+$/, '').split(/[\\/]/);
-    let accum = '';
-    const crumbs = parts.map((pt, idx) => {
-      if (idx === 0) accum = pt + '\\';
-      else accum += (accum.endsWith('\\') ? '' : '\\') + pt;
-      const isLast = idx === parts.length - 1;
-      return { name: pt || '根', path: accum, isLast: isLast };
-    });
-    wrap.innerHTML = crumbs.map(c =>
-      c.isLast
-        ? `<span class="crumb-item current">${escapeHtml(c.name)}</span>`
-        : `<span class="crumb-item" onclick="loadSnifferTree('${c.path.replace(/\\/g, '\\\\')}')">${escapeHtml(c.name)}</span><span class="crumb-sep">&gt;</span>`
-    ).join('');
-  }
-
-  function selectSnifferNode(node) {
-    snifferSelectedNode = node;
-    const nameEl = document.getElementById('csiName');
-    const tagEl = document.getElementById('csiTag');
-    const sizeEl = document.getElementById('csiSize');
-    const pctEl = document.getElementById('csiPct');
-    const pathEl = document.getElementById('csiPath');
-    const icoEl = document.getElementById('csiIco');
-
-    if (nameEl) nameEl.textContent = node.name || '未命名';
-    if (tagEl) {
-      const catMap = {
-        project: '本地工程', ai_model: 'AI模型资产', cache: '软件缓存',
-        system: '系统底层', media: '媒体影像', archive: '压缩归档', general: '常规目录'
-      };
-      tagEl.textContent = catMap[node.category] || node.category || '项目';
-    }
-    if (sizeEl) sizeEl.textContent = node.size_h || cleanerH(node.size || 0);
-    if (pctEl) pctEl.textContent = (node.percent !== undefined ? `${node.percent}%` : '');
-    if (pathEl) pathEl.textContent = node.path || '-';
-    if (icoEl) icoEl.textContent = node.is_dir ? '📁' : '📄';
-
-    const canvas = document.getElementById('cleanerTreemapCanvas');
-    if (canvas) {
-      canvas.querySelectorAll('.sniff-block').forEach(b => {
-        b.classList.toggle('selected', b.dataset.path === node.path);
-      });
-    }
-  }
-
-  function openSnifferInExplorer() {
-    if (!snifferSelectedNode || !snifferSelectedNode.path) return;
-    fetch('/api/cleaner/spacesniffer/open', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: snifferSelectedNode.path })
-    }).catch(() => {});
-  }
-
-  function renderTreemapCanvas(rootData) {
-    const container = document.getElementById('cleanerTreemapCanvas');
-    if (!container) return;
-    container.querySelectorAll('.sniff-block, .sniff-empty').forEach(el => el.remove());
-
-    const children = (rootData.children || []).filter(c => c.size > 0);
-    if (!children.length) {
-      const emp = document.createElement('div');
-      emp.className = 'sniff-empty';
-      emp.style.cssText = 'text-align:center;color:var(--tx3);padding:60px 20px;';
-      emp.textContent = '此目录下无大于收拢阈值的文件或子目录';
-      container.appendChild(emp);
-      return;
-    }
-
-    const rect = container.getBoundingClientRect();
-    const width = Math.max(rect.width, 400);
-    const height = Math.max(rect.height, 460);
-
-    const total = children.reduce((s, c) => s + c.size, 0);
-    const layoutItems = children.map(c => ({ ...c, value: c.size }));
-    const rects = computeSquarifiedTreemap(layoutItems, 0, 0, width, height, total);
-
-    rects.forEach(item => {
-      if (item.w < 8 || item.h < 8) return;
-      const div = document.createElement('div');
-      div.className = `sniff-block cat-${item.category || 'general'}`;
-      div.style.left = `${item.x}px`;
-      div.style.top = `${item.y}px`;
-      div.style.width = `${item.w}px`;
-      div.style.height = `${item.h}px`;
-      div.dataset.path = item.path;
-
-      const showFull = item.w >= 70 && item.h >= 45;
-      const showTiny = item.w >= 36 && item.h >= 24;
-
-      let inner = `
-        <div class="b-name" title="${escapeHtml(item.path)}">
-          <span>${item.is_dir ? '📁' : '📄'}</span>
-          <span>${escapeHtml(item.name)}</span>
-        </div>
-        ${showTiny ? `<div class="b-size">${escapeHtml(item.size_h)}</div>` : ''}
-        ${showFull ? `<div class="b-meta"><span>${item.percent}%</span><span>${(item.file_count || 1).toLocaleString()}项</span></div>` : ''}
-      `;
-
-      if (showFull && item.children && item.children.length > 0 && item.h >= 90) {
-        const topSubs = item.children.slice(0, 3);
-        inner += `<div class="sniff-nested-box">` + topSubs.map(s =>
-          `<div class="sniff-nested-item">${escapeHtml(s.name)} (${escapeHtml(s.size_h)})</div>`
-        ).join('') + `</div>`;
-      }
-
-      div.innerHTML = inner;
-
-      div.onclick = e => {
-        e.stopPropagation();
-        selectSnifferNode(item);
-      };
-      div.ondblclick = e => {
-        e.stopPropagation();
-        if (item.is_dir) {
-          loadSnifferTree(item.path);
-        }
-      };
-      div.oncontextmenu = e => {
-        e.preventDefault();
-        selectSnifferNode(item);
-        openSnifferInExplorer();
-      };
-
-      container.appendChild(div);
-    });
-  }
-
-  function computeSquarifiedTreemap(items, x, y, w, h, total) {
-    if (!items.length || total <= 0 || w <= 0 || h <= 0) return [];
-    const results = [];
-    let remaining = [...items];
-    let curX = x, curY = y, curW = w, curH = h;
-    let curTotal = total;
-
-    while (remaining.length > 0) {
-      const isHorizontal = curW >= curH;
-      const side = isHorizontal ? curH : curW;
-
-      let row = [remaining[0]];
-      let rowSum = remaining[0].value;
-      let bestWorst = worstAspect(row, rowSum, side, curTotal, isHorizontal ? curW : curH);
-
-      let i = 1;
-      while (i < remaining.length) {
-        const nextItem = remaining[i];
-        const nextSum = rowSum + nextItem.value;
-        const nextWorst = worstAspect([...row, nextItem], nextSum, side, curTotal, isHorizontal ? curW : curH);
-        if (nextWorst <= bestWorst) {
-          row.push(nextItem);
-          rowSum = nextSum;
-          bestWorst = nextWorst;
-          i++;
-        } else {
-          break;
-        }
-      }
-
-      const rowThickness = curTotal > 0 ? ((rowSum / curTotal) * (isHorizontal ? curW : curH)) : 0;
-      let offset = 0;
-
-      row.forEach(item => {
-        const itemLen = rowSum > 0 ? ((item.value / rowSum) * side) : 0;
-        if (isHorizontal) {
-          results.push({
-            ...item,
-            x: Math.round(curX),
-            y: Math.round(curY + offset),
-            w: Math.max(0, Math.round(rowThickness) - 1),
-            h: Math.max(0, Math.round(itemLen) - 1)
-          });
-        } else {
-          results.push({
-            ...item,
-            x: Math.round(curX + offset),
-            y: Math.round(curY),
-            w: Math.max(0, Math.round(itemLen) - 1),
-            h: Math.max(0, Math.round(rowThickness) - 1)
-          });
-        }
-        offset += itemLen;
-      });
-
-      if (isHorizontal) {
-        curX += rowThickness;
-        curW -= rowThickness;
-      } else {
-        curY += rowThickness;
-        curH -= rowThickness;
-      }
-      curTotal -= rowSum;
-      remaining = remaining.slice(row.length);
-    }
-
-    return results;
-  }
-
-  function worstAspect(row, sum, side, total, length) {
-    if (sum === 0 || side === 0) return Infinity;
-    const rowLen = (sum / total) * length;
-    if (rowLen === 0) return Infinity;
-    let maxAspect = 0;
-    for (const item of row) {
-      const itemLen = (item.value / sum) * side;
-      if (itemLen === 0) continue;
-      const aspect = Math.max(rowLen / itemLen, itemLen / rowLen);
-      if (aspect > maxAspect) maxAspect = aspect;
-    }
-    return maxAspect;
-  }
-
-  window.addEventListener('resize', () => {
-    if (snifferActive && snifferCurrentData) {
-      renderTreemapCanvas(snifferCurrentData);
-    }
-  });
 
   const ROUTES = [
     '#/dashboard', '#/ai', '#/news', '#/rankings', '#/compare',

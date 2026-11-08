@@ -21,6 +21,22 @@ import itertools
 import queue
 import threading
 import time
+import os
+import sys
+
+# 防御性修复：清理指向已失效临时目录的残存 TCL/TK 环境变量并保证正确注入
+for _lib_var, _sub in (('TCL_LIBRARY', '_tcl_data'), ('TK_LIBRARY', '_tk_data')):
+    _val = os.environ.get(_lib_var)
+    if not _val or not os.path.isdir(_val):
+        if getattr(sys, 'frozen', False):
+            _t = os.path.join(getattr(sys, '_MEIPASS', ''), _sub)
+            if os.path.isdir(_t):
+                os.environ[_lib_var] = _t
+        else:
+            _u = os.path.join(sys.base_prefix, 'tcl', 'tcl8.6' if 'TCL' in _lib_var else 'tk8.6')
+            if os.path.isdir(_u):
+                os.environ[_lib_var] = _u
+
 import tkinter as tk
 from tkinter import font as tkfont
 

@@ -8,11 +8,18 @@ import os
 import sys
 import time
 
-# 防御性修复：清理指向已失效临时目录的残存 TCL/TK 环境变量
-for _lib_var in ('TCL_LIBRARY', 'TK_LIBRARY'):
+# 防御性修复：清理指向已失效临时目录的残存 TCL/TK 环境变量并保证正确注入
+for _lib_var, _sub in (('TCL_LIBRARY', '_tcl_data'), ('TK_LIBRARY', '_tk_data')):
     _val = os.environ.get(_lib_var)
-    if _val and not os.path.isdir(_val):
-        os.environ.pop(_lib_var, None)
+    if not _val or not os.path.isdir(_val):
+        if getattr(sys, 'frozen', False):
+            _t = os.path.join(getattr(sys, '_MEIPASS', ''), _sub)
+            if os.path.isdir(_t):
+                os.environ[_lib_var] = _t
+        else:
+            _u = os.path.join(sys.base_prefix, 'tcl', 'tcl8.6' if 'TCL' in _lib_var else 'tk8.6')
+            if os.path.isdir(_u):
+                os.environ[_lib_var] = _u
 
 # [2026-10-04] 单例保护:8790 已有监听即静默退出——防 guard 与开机自启竞态产生
 # 无端口僵尸实例(10-03 起实测双实例,僵尸不退出不占端口纯占内存)。
@@ -36,22 +43,19 @@ if _already_running():
 
 
 def _setup_logging():
-    """冻结模式：无论 stdout 是什么，一律重定向到 exe 同目录的日志。
-
-    注意：windowed 模式下 sys.stdout 可能是 None，此时任何 print 都会抛
-    AttributeError（实测导致主流程中断、托盘/热键都没起来），所以必须
-    无条件接管。
-    """
-    if not getattr(sys, "frozen", False) and sys.stdout is not None:
-        return
+    """冻结模式：无论 stdout 是什么，一律重定向到 exe 同目录的日志。"""
     base = os.path.dirname(sys.executable if getattr(sys, "frozen", False) else os.path.abspath(__file__))
     try:
         f = open(os.path.join(base, "toolbox.log"), "a",
-                 encoding="utf-8", buffering=1)
-    except Exception:
-        return
-    sys.stdout = f
-    sys.stderr = f
+                 encoding="utf-8", errors="replace", buffering=1)
+        sys.stdout = f
+        sys.stderr = f
+    except Exception as e:
+        try:
+            with open(os.path.join(base, "emergency.log"), "a", encoding="utf-8") as ef:
+                ef.write(f"Failed to open toolbox.log: {e}\n")
+        except Exception:
+            pass
     import time
     print(f"\n=== toolbox start {time.strftime('%Y-%m-%d %H:%M:%S')} ===",
           flush=True)

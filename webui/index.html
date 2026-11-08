@@ -1032,8 +1032,7 @@
               <p class="ph-desc">靶向快速扫描、多盘规则分类与安全清理。只进回收站，默认全不勾选，确认后再清理。</p>
             </div>
             <div class="ph-acts">
-              <button class="btn-ghost" id="cleanerBtnToggleSniffer" title="切换 SpaceSniffer 空间透视矩形树图"><i class="ph ph-squares-four"></i>SpaceSniffer 空间透视</button>
-              <button class="btn-ghost" id="cleanerBtnLaunchNative" style="color:var(--accent-emerald, #10b981);border-color:rgba(16,185,129,0.35);" title="直接调起官方原生 SpaceSniffer (0延迟/真动态流式/多线程C++引擎)"><i class="ph ph-lightning"></i>原生 SpaceSniffer</button>
+              <button class="btn-ghost" id="cleanerBtnLaunchNative" style="color:var(--accent-emerald, #10b981);border-color:rgba(16,185,129,0.35);" title="直接调起官方原生 SpaceSniffer (0延迟/真动态流式/多线程C++引擎)"><i class="ph ph-lightning"></i>SpaceSniffer 磁盘透视</button>
               <button class="btn-ghost" id="cleanerBtnAiReport" title="生成并导出面向 AI 决策的 Markdown 审计报告"><i class="ph ph-robot"></i>导出 AI 决策报告</button>
               <button class="btn-ghost" id="cleanerBtnWinapp2" title="查看或更新 winapp2.ini 社区规则库"><i class="ph ph-sparkle"></i><span id="cleanerWaBadge">社区规则库</span></button>
               <button class="btn-ghost" id="cleanerBtnEmptyRb" title="彻底清空 Windows 回收站"><i class="ph ph-trash"></i>清空回收站</button>
@@ -1116,57 +1115,6 @@
             <pre id="cleanerReportPre"></pre>
           </div>
 
-          <!-- SpaceSniffer 空间透视交互视图 -->
-          <div id="cleanerSnifferView" style="display:none;">
-            <div class="cleaner-sniffer-toolbar">
-              <button class="btn-ghost sm" id="cleanerSnifferBack" title="返回上一级目录"><i class="ph ph-arrow-left"></i>上一级</button>
-              <div class="cleaner-sniffer-drives" id="cleanerSnifferDrives"></div>
-              <input type="text" id="cleanerSnifferInput" class="hud-input" placeholder="输入分析路径，例如 F:\AI-hub\workroom">
-              <select id="cleanerSnifferDepth" class="hud-select sm" title="扫描深度">
-                <option value="1" selected>1 层（秒开）</option>
-                <option value="2">2 层深度</option>
-                <option value="3">3 层深度</option>
-              </select>
-              <select id="cleanerSnifferMinSize" class="hud-select sm" title="最小收拢阈值">
-                <option value="102400">&ge; 100 KB</option>
-                <option value="524288" selected>&ge; 512 KB</option>
-                <option value="5242880">&ge; 5 MB</option>
-                <option value="52428800">&ge; 50 MB</option>
-              </select>
-              <button class="btn-main sm" id="cleanerSnifferAnalyze"><i class="ph ph-magnifying-glass"></i>透视分析</button>
-              <button class="btn-main sm" id="cleanerSnifferNativeLaunch" style="background:linear-gradient(135deg, #10b981, #059669);border-color:#059669;color:#fff;font-weight:600;" title="启动官方原生 SpaceSniffer (C++引擎/0延迟/真动态流式)"><i class="ph ph-lightning"></i>调起原生 SpaceSniffer</button>
-              <button class="btn-ghost sm" id="cleanerSnifferClose" title="返回清理列表"><i class="ph ph-list-dashes"></i>返回列表</button>
-            </div>
-
-            <!-- 面包屑导航 -->
-            <div class="cleaner-sniffer-crumbs" id="cleanerSnifferCrumbs"></div>
-
-            <!-- 树图画布容器 -->
-            <div class="cleaner-treemap-wrap">
-              <div class="cleaner-treemap-canvas" id="cleanerTreemapCanvas">
-                <div class="cleaner-sniffer-loading" id="cleanerSnifferLoading" style="display:none;">
-                  <div class="cleaner-spinner"></div>
-                  <span>正在多线程深度遍历与空间透视...</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- 底部属性检查条 -->
-            <div class="cleaner-sniffer-inspector" id="cleanerSnifferInspector">
-              <div class="csi-head">
-                <span class="csi-ico" id="csiIco">📁</span>
-                <span class="csi-name" id="csiName">请点击上方矩形方块选择节点</span>
-                <span class="csi-tag" id="csiTag">-</span>
-                <span class="csi-size" id="csiSize">-</span>
-                <span class="csi-pct" id="csiPct">-</span>
-              </div>
-              <div class="csi-path" id="csiPath">-</div>
-              <div class="csi-acts">
-                <button type="button" class="btn-ghost sm" id="cleanerSnifferOpenNative" title="在原生 SpaceSniffer 中透视该节点" onclick="launchNativeSnifferForSelected()"><i class="ph ph-lightning"></i>在原生 SpaceSniffer 中透视</button>
-                <button class="btn-ghost sm" id="cleanerSnifferOpenExplorer"><i class="ph ph-folder-open"></i>在资源管理器中高亮定位</button>
-              </div>
-            </div>
-          </div>
 
           <!-- AI 决策报告弹窗 -->
           <div class="hud-modal-overlay" id="cleanerAiModalOverlay" style="display:none;">
