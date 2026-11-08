@@ -12378,20 +12378,26 @@
   // SpaceSniffer 官方原生磁盘空间透视调用器
   // ============================================================
   async function launchNativeSpaceSniffer(targetPath) {
-    let p = (targetPath || '').trim();
-    if (!p) {
-      const customInput = document.getElementById('cleanerCustomRoot');
-      if (customInput && customInput.value.trim()) {
-        p = customInput.value.trim();
-      } else if (cleanerRoots && cleanerRoots.length) {
-        p = cleanerRoots[0];
-      } else if (cleanerDrives && cleanerDrives.length) {
-        p = cleanerDrives[0].drive;
-      } else {
-        p = 'F:\\';
-      }
-    }
+    const btn = document.getElementById('cleanerBtnLaunchNative');
+    const origHtml = btn ? btn.innerHTML : '';
     try {
+      let p = (targetPath || '').trim();
+      if (!p) {
+        const extraInput = document.getElementById('cleanerExtraRoot');
+        if (extraInput && extraInput.value.trim()) {
+          p = extraInput.value.trim();
+        } else if (cleanerSelDrives && cleanerSelDrives.size > 0) {
+          p = [...cleanerSelDrives][0];
+        } else if (cleanerDrives && cleanerDrives.length > 0) {
+          p = cleanerDrives[0].drive;
+        } else {
+          p = 'C:\\';
+        }
+      }
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="ph ph-spinner ph-spin"></i> 正在调起...';
+      }
       const resp = await fetch('/api/cleaner/spacesniffer/native', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -12400,10 +12406,27 @@
       const j = await resp.json();
       if (resp.ok && j.ok) {
         console.log('[spacesniffer] Native launched for', p, 'PID:', j.pid);
+        if (btn) {
+          btn.innerHTML = `<i class="ph ph-check"></i> 已调起 (${escapeHtml(p)})`;
+          setTimeout(() => {
+            if (btn) {
+              btn.innerHTML = origHtml;
+              btn.disabled = false;
+            }
+          }, 3000);
+        }
       } else {
+        if (btn) {
+          btn.innerHTML = origHtml;
+          btn.disabled = false;
+        }
         alert(j.error || j.message || '调起官方原生 SpaceSniffer 失败');
       }
     } catch (e) {
+      if (btn) {
+        btn.innerHTML = origHtml;
+        btn.disabled = false;
+      }
       alert('调起请求异常: ' + e);
     }
   }
