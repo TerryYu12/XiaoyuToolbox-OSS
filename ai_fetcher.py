@@ -594,14 +594,15 @@ AA_MODELS_URL = "https://artificialanalysis.ai/leaderboards/models"
 LMARENA_TEXT_URL = "https://lmarena.ai/leaderboard/text"
 ARENA_DATASET = "lmarena-ai/leaderboard-dataset"
 ARENA_DATASET_API = "https://datasets-server.huggingface.co"
-LIVEBENCH_REPO = "https://raw.githubusercontent.com/LiveBench/new-livebench/main"
-LIVEBENCH_CONSTANTS_URL = LIVEBENCH_REPO + "/src/lib/constants.js"
+LIVEBENCH_REPO = "https://raw.githubusercontent.com/LiveBench/livebench.github.io/main"
+LIVEBENCH_APP_URL = LIVEBENCH_REPO + "/src/App.js"
+LIVEBENCH_CONSTANTS_URL = LIVEBENCH_REPO + "/src/constants.js"
 LIVEBENCH_MODEL_LINKS_URL = LIVEBENCH_REPO + "/src/Table/modelLinks.js"
 
 
 _DATASET_API_LOCK = threading.Lock()
 _DATASET_API_LAST_REQUEST_AT = 0.0
-_DATASET_API_MIN_INTERVAL = 0.5
+_DATASET_API_MIN_INTERVAL = 0.8
 _DATASET_API_MAX_RETRY_AFTER = 120
 
 
@@ -622,7 +623,7 @@ def _dataset_retry_after_seconds(error):
 def _dataset_api_json(url):
     """串行限速 Hugging Face Dataset Viewer 请求，并按 Retry-After 退避重试 429。"""
     global _DATASET_API_LAST_REQUEST_AT
-    for attempt in range(3):
+    for attempt in range(4):
         try:
             with _DATASET_API_LOCK:
                 gap = _DATASET_API_MIN_INTERVAL - (
@@ -636,7 +637,7 @@ def _dataset_api_json(url):
             return json.loads(raw.decode("utf-8", "replace"))
         except Exception as e:
             status = getattr(e, "code", None)
-            if attempt >= 2 or (status is not None and status < 500 and status != 429):
+            if attempt >= 3 or (status is not None and status < 500 and status != 429):
                 raise
             if status == 429:
                 delay = _dataset_retry_after_seconds(e)
@@ -645,7 +646,7 @@ def _dataset_api_json(url):
                     if delay > _DATASET_API_MAX_RETRY_AFTER:
                         raise
                 else:
-                    delay = 5 * (2 ** attempt)
+                    delay = 12 * (attempt + 1)
             else:
                 delay = min(30, 2 ** (attempt + 1))
             time.sleep(max(0.5, delay))
@@ -659,37 +660,46 @@ def _dataset_api_json(url):
 #    **不是**准确率——知识准确率要用 `omniscienceAccuracy`，选错字段会出一屏负数；
 # ③ GDPval 的官方列名写明标度是 `(Elo-500)/2000`，换算回 Elo 才有可比性。
 # label / english 取自页面内嵌的官方 columns 字典，不自造名词。
+# fields 兼容新版内嵌 scores 字典键名与旧版顶层字段。
 AA_CAP_DIMS = (
     {"key": "gdpval", "field": "gdpvalNormalized",
+     "fields": ("gdpval-aa-normalized", "gdpvalNormalized"),
      "label": "真实世界工作任务", "english": "Agentic Real-World Work Tasks",
      "scale": "elo",
      "desc": "投行/咨询/法律等真实交付物任务上的人工对照评审，页面原始标度是 "
              "(Elo-500)/2000，此处换算回 Elo 展示。"},
     {"key": "terminal", "field": "terminalBench21",
+     "fields": ("terminalbench-2-1", "terminalbench-hard", "terminalbench-4-0", "terminalBench21"),
      "label": "终端与编码智能体", "english": "Agentic Coding & Terminal Use",
      "scale": "percent",
      "desc": "Terminal-Bench v2.1：在真实终端环境里完成多步编码运维任务的成功率。"},
     {"key": "scicode", "field": "scicode",
+     "fields": ("scicode",),
      "label": "科研编程", "english": "SciCode",
      "scale": "percent",
      "desc": "把科研问题转成可执行代码并复现数值结果，偏科学与工程计算。"},
     {"key": "lcr", "field": "lcr",
+     "fields": ("artificial-analysis-long-context-reasoning", "lcr"),
      "label": "长上下文推理", "english": "Long Context Reasoning",
      "scale": "percent",
      "desc": "AA-LCR：长文档中跨段落定位、聚合与推理的能力。"},
     {"key": "hle", "field": "hle",
+     "fields": ("humanitys-last-exam", "hle-diamond", "hle"),
      "label": "推理与知识", "english": "Reasoning & Knowledge",
      "scale": "percent",
      "desc": "Humanity's Last Exam：高难度跨学科专家级题目。"},
     {"key": "gpqa", "field": "gpqa",
+     "fields": ("gpqa-diamond", "gpqa"),
      "label": "科学推理", "english": "Scientific Reasoning",
      "scale": "percent",
      "desc": "GPQA Diamond：研究生水平的生物/物理/化学题，谷歌不出的难题。"},
     {"key": "critpt", "field": "critpt",
+     "fields": ("critpt", "critpt-v2-hard"),
      "label": "批判性推理", "english": "CritPT",
      "scale": "percent",
      "desc": "对论证的前提、漏洞与反例做批判性审查的能力。"},
     {"key": "omni", "field": "omniscienceAccuracy",
+     "fields": ("omniscience-accuracy", "omniscienceAccuracy"),
      "label": "知识准确率", "english": "AA-Omniscience",
      "scale": "percent",
      "desc": "知识问答的准确率（不含幻觉惩罚项，与 AA 的综合指数口径不同）。"},
@@ -763,10 +773,22 @@ def _fetch_aa_index(rows=None):
     return out
 
 
+def _get_aa_metric(model, fields):
+    """提取 AA 模型单项指标：优先查 scores 字典（新版结构），兜底查顶层字段（旧版结构）。"""
+    scores = model.get("scores") if isinstance(model.get("scores"), dict) else {}
+    for f in fields:
+        v = scores.get(f) if f in scores else model.get(f)
+        if isinstance(v, (int, float)) and math.isfinite(float(v)):
+            return v
+    return None
+
+
 def _aa_cap_value(scale, raw):
-    """AA 原始分数 → 展示值。percent：0–1 分数转百分数；elo：GDPval 标度还原成 Elo。"""
+    """AA 原始分数 → 展示值。percent：0–1 分数转百分数；elo：还原成 Elo（新版已为 Elo 时直接取整）。"""
     v = float(raw)
-    return round(v * 2000 + 500) if scale == "elo" else round(v * 100, 1)
+    if scale == "elo":
+        return round(v) if v > 10.0 else round(v * 2000 + 500)
+    return round(v * 100, 1) if v <= 1.0 else round(v, 1)
 
 
 def _capability_boards(rows, today):
@@ -779,20 +801,24 @@ def _capability_boards(rows, today):
     live = [m for m in rows if not m.get("deprecated")]
     out = {}
     for dim in AA_CAP_DIMS:
-        field = dim["field"]
-        scored = [m for m in live if isinstance(m.get(field), (int, float))]
+        fields = dim.get("fields") or (dim["field"],)
+        scored = []
+        for m in live:
+            val = _get_aa_metric(m, fields)
+            if val is not None:
+                scored.append((m, val))
         if len(scored) < 10:
             print(f"[ai_fetcher] 能力维度 {dim['key']} 有值条目过少"
                   f"（{len(scored)}），跳过", flush=True)
             continue
-        scored.sort(key=lambda m: -m[field])
+        scored.sort(key=lambda item: -item[1])
         items = []
-        for i, m in enumerate(scored[:100]):
+        for i, (m, val) in enumerate(scored[:100]):
             items.append({
                 "rank": i + 1,
                 "model": m.get("shortName") or m.get("name") or "--",
                 "org": m.get("modelCreatorName") or "--",
-                "value": _aa_cap_value(dim["scale"], m[field]),
+                "value": _aa_cap_value(dim["scale"], val),
                 "unit": "Elo" if dim["scale"] == "elo" else "%",
                 "license": "开源" if m.get("isOpenWeights") else "闭源",
                 "badge": "该维度第一" if i == 0 else "",
@@ -817,11 +843,15 @@ def build_model_catalog(rows, today):
             continue
         cap = {}
         for dim in AA_CAP_DIMS:
-            v = m.get(dim["field"])
-            if isinstance(v, (int, float)):
+            fields = dim.get("fields") or (dim["field"],)
+            v = _get_aa_metric(m, fields)
+            if v is not None:
                 cap[dim["key"]] = _aa_cap_value(dim["scale"], v)
         if not cap:
             continue
+        speed = m.get("outputSpeed")
+        if speed is None:
+            speed = m.get("medianOutputTokensPerSecond")
         models.append({
             "name": m.get("shortName") or m.get("name") or "--",
             "org": m.get("modelCreatorName") or "--",
@@ -833,8 +863,8 @@ def build_model_catalog(rows, today):
             "context": m.get("contextWindowTokens"),
             "price_in": m.get("price1mInputTokens"),
             "price_out": m.get("price1mOutputTokens"),
-            "speed": (round(m["medianOutputTokensPerSecond"], 1)
-                      if isinstance(m.get("medianOutputTokensPerSecond"), (int, float))
+            "speed": (round(speed, 1)
+                      if isinstance(speed, (int, float))
                       else None),
             "cap": cap,
         })
@@ -919,7 +949,8 @@ def _fetch_arena_dataset_rows():
     split_url = ARENA_DATASET_API + "/splits?" + urlencode({"dataset": ARENA_DATASET})
     split_data = _dataset_api_json(split_url)
     configs = sorted({s.get("config") for s in split_data.get("splits", [])
-                      if s.get("split") == "latest" and s.get("config")})
+                      if s.get("split") == "latest" and s.get("config")},
+                     key=lambda c: (c != "text", c != "vision", c))
     if not configs:
         raise RuntimeError("Arena 数据集没有可用的 latest 配置")
 
@@ -950,24 +981,24 @@ def _fetch_arena_dataset_rows():
                 if not page_rows or len(page_rows) < 100:
                     break
                 offset += len(page_rows)
-            if rows:
-                # 模型可在不同 category 出现，但同一榜内同模型同类别只能有一行。
-                seen = set()
-                for row in rows:
-                    key = (row.get("model_name"), row.get("category") or "overall")
-                    if key in seen:
-                        raise RuntimeError(f"重复模型记录：{key[0]} / {key[1]}")
-                    seen.add(key)
-                by_config[config] = rows
-            else:
-                errors[config] = "latest 分片没有有效模型记录"
         except Exception as e:
             errors[config] = str(e)
             print(f"[ai_fetcher] Arena {config} 失败: {e}", flush=True)
-            if getattr(e, "code", None) == 429:
-                # 数据服务限流往往是主机级别，继续请求其它配置只会重复撞 429。
-                # 已取到的配置照常展示，其余配置沿用旧缓存，下次刷新再补。
-                break
+
+        if rows:
+            # 模型可在不同 category 出现，但同一榜内同模型同类别去重保底
+            deduped = []
+            seen = set()
+            for row in rows:
+                key = (row.get("model_name"), row.get("category") or "overall")
+                if key in seen:
+                    continue
+                seen.add(key)
+                deduped.append(row)
+            by_config[config] = deduped
+        elif config not in errors:
+            errors[config] = "latest 分片没有有效模型记录"
+
     if not by_config:
         raise RuntimeError("Arena latest 数据全部不可用")
     return by_config, errors
@@ -1094,9 +1125,12 @@ def _js_model_link_map(source):
 
 def _fetch_livebench_source():
     """读取 LiveBench 最新公开 release，依照上游公式生成总分与七类分。"""
-    manifest = _http_get(LIVEBENCH_CONSTANTS_URL, timeout=25).decode("utf-8", "replace")
-    releases_block = re.search(r"RELEASES\s*=\s*\[(.*?)\]", manifest, re.S)
-    releases = re.findall(r"\"(20\d{2}-\d{2}-\d{2})\"", releases_block.group(1)) if releases_block else []
+    manifest = _http_get(LIVEBENCH_APP_URL, timeout=25).decode("utf-8", "replace")
+    releases = sorted(set(re.findall(r"['\"](20\d{2}-\d{2}-\d{2})['\"]", manifest)))
+    if not releases:
+        releases_block = re.search(r"RELEASES\s*=\s*\[(.*?)\]", manifest, re.S)
+        if releases_block:
+            releases = re.findall(r"\"(20\d{2}-\d{2}-\d{2})\"", releases_block.group(1))
     if not releases:
         raise RuntimeError("LiveBench release 清单缺失或格式变化")
     release = releases[-1]
@@ -1535,14 +1569,17 @@ def fetch_rankings(source=None):
             return rankings, {"arena": catalog}, errors
         except Exception as e:
             print(f"[ai_fetcher] Arena 数据集失败，尝试旧文本榜回退: {e}", flush=True)
-            items = _fetch_arena_direct()
-            return ({"arena": {
-                "name": "LMArena 人类偏好榜",
-                "benchmark": "Arena 官方 Text Arena rating",
-                "description": "Hugging Face 数据集不可用时回退到 Arena 官方文本榜。",
-                "updated_at": updated_at, "items": items, "source": "live",
-            }}, {"arena": _arena_direct_catalog(items, updated_at)},
-                    {"arena": str(e)})
+            try:
+                items = _fetch_arena_direct()
+                return ({"arena": {
+                    "name": "LMArena 人类偏好榜",
+                    "benchmark": "Arena 官方 Text Arena rating",
+                    "description": "Hugging Face 数据集不可用时回退到 Arena 官方文本榜。",
+                    "updated_at": updated_at, "items": items, "source": "live",
+                }}, {"arena": _arena_direct_catalog(items, updated_at)},
+                        {"arena": str(e)})
+            except Exception as direct_err:
+                return {}, {}, {"arena": f"{e}; direct fallback: {direct_err}"}
 
     if source == "livebench":
         rankings, catalog = _fetch_livebench_source()

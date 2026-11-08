@@ -2617,41 +2617,305 @@
     box.innerHTML = head + (body || '<div class="zp-empty">30 分钟内暂无请求</div>');
   }
 
+  // ============================================================
+  // 预算卡与模型定价系统（官方 API 默认价 + 用户自定义输入/输出/缓存命中价）
+  // 价格基准：USD / 1M Tokens (美元 / 百万 Tokens)
+  // 单模型费用：Cost = (Input * Pin + Output * Pout + CacheRead * Phit) / 1,000,000
+  // ============================================================
+  const OFFICIAL_MODEL_PRICING = [
+    // Anthropic Claude
+    { pattern: /claude[-_]?3[-_]?7[-_]?sonnet/i, name: 'Claude 3.7 Sonnet', input: 3.0, output: 15.0, cacheHit: 0.3 },
+    { pattern: /claude[-_]?(?:3[-_]?5[-_]?)?sonnet|sonnet[-_]?5/i, name: 'Claude 3.5 Sonnet', input: 3.0, output: 15.0, cacheHit: 0.3 },
+    { pattern: /claude[-_]?(?:3[-_]?)?opus|opus[-_]?5/i, name: 'Claude 3 Opus', input: 15.0, output: 75.0, cacheHit: 1.5 },
+    { pattern: /claude[-_]?(?:3[-_]?5[-_]?)?haiku|haiku[-_]?5/i, name: 'Claude 3.5 Haiku', input: 0.8, output: 4.0, cacheHit: 0.08 },
+    
+    // OpenAI
+    { pattern: /gpt[-_]?4o[-_]?mini/i, name: 'GPT-4o Mini', input: 0.15, output: 0.60, cacheHit: 0.075 },
+    { pattern: /gpt[-_]?4o(?![_-]?mini)/i, name: 'GPT-4o', input: 2.50, output: 10.0, cacheHit: 1.25 },
+    { pattern: /o1[-_]?mini/i, name: 'o1-mini', input: 1.10, output: 4.40, cacheHit: 0.55 },
+    { pattern: /o3[-_]?mini/i, name: 'o3-mini', input: 1.10, output: 4.40, cacheHit: 0.55 },
+    { pattern: /\bo1\b/i, name: 'o1', input: 15.0, output: 60.0, cacheHit: 7.50 },
+    { pattern: /gpt[-_]?[56].*terra/i, name: 'Codex / Terra (GPT)', input: 2.50, output: 10.0, cacheHit: 1.25 },
+    { pattern: /gpt[-_]?[56].*luna/i, name: 'Luna (GPT)', input: 2.50, output: 10.0, cacheHit: 1.25 },
+    
+    // DeepSeek
+    { pattern: /deepseek.*reasoner|deepseek[-_]?r1/i, name: 'DeepSeek R1', input: 0.55, output: 2.19, cacheHit: 0.14 },
+    { pattern: /deepseek.*(?:chat|v3|v4|flash)/i, name: 'DeepSeek V3 / Flash', input: 0.14, output: 0.28, cacheHit: 0.014 },
+
+    // Google Gemini
+    { pattern: /gemini.*(?:flash|tiered)/i, name: 'Gemini Flash', input: 0.10, output: 0.40, cacheHit: 0.025 },
+    { pattern: /gemini.*(?:pro|argon)/i, name: 'Gemini Pro', input: 1.25, output: 5.00, cacheHit: 0.3125 },
+
+    // 智谱 GLM
+    { pattern: /glm.*flash/i, name: 'GLM Flash', input: 0.06, output: 0.06, cacheHit: 0.03 },
+    { pattern: /glm/i, name: 'GLM Standard', input: 1.00, output: 1.00, cacheHit: 0.50 },
+
+    // 通义千问 Qwen
+    { pattern: /qwen.*turbo/i, name: 'Qwen Turbo', input: 0.05, output: 0.20, cacheHit: 0.01 },
+    { pattern: /qwen.*plus/i, name: 'Qwen Plus', input: 0.40, output: 1.20, cacheHit: 0.10 },
+    { pattern: /qwen.*max/i, name: 'Qwen Max', input: 1.60, output: 6.40, cacheHit: 0.40 },
+
+    // MiMo / MiniMax / StepFun
+    { pattern: /mimo|minimax/i, name: 'MiMo / MiniMax', input: 0.15, output: 0.60, cacheHit: 0.03 },
+    { pattern: /step/i, name: 'StepFun', input: 0.10, output: 0.40, cacheHit: 0.02 }
+  ];
+
+  const DEFAULT_FALLBACK_PRICING = { input: 1.0, output: 3.0, cacheHit: 0.2 };
+
+  function zpGetDefaultPricing(modelName) {
+    if (!modelName) return { ...DEFAULT_FALLBACK_PRICING };
+    const str = String(modelName).trim();
+    for (const item of OFFICIAL_MODEL_PRICING) {
+      if (item.pattern.test(str)) {
+        return { input: item.input, output: item.output, cacheHit: item.cacheHit };
+      }
+    }
+    return { ...DEFAULT_FALLBACK_PRICING };
+  }
+
+  function zpGetCustomPricing() {
+    try {
+      const raw = localStorage.getItem('zpModelPricing');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') return parsed;
+      }
+    } catch (e) { }
+    return {};
+  }
+
+  function zpSaveCustomPricing(map) {
+    try {
+      if (!map || Object.keys(map).length === 0) {
+        localStorage.removeItem('zpModelPricing');
+      } else {
+        localStorage.setItem('zpModelPricing', JSON.stringify(map));
+      }
+    } catch (e) { }
+  }
+
+  function zpGetModelPrice(modelName) {
+    const custom = zpGetCustomPricing();
+    const key = String(modelName || '').trim();
+    if (custom[key] && typeof custom[key] === 'object') {
+      const c = custom[key];
+      return {
+        input: Number(c.input) >= 0 ? Number(c.input) : 0,
+        output: Number(c.output) >= 0 ? Number(c.output) : 0,
+        cacheHit: Number(c.cacheHit) >= 0 ? Number(c.cacheHit) : 0,
+        isCustom: true
+      };
+    }
+    const def = zpGetDefaultPricing(key);
+    return { ...def, isCustom: false };
+  }
+
+  function zpCalcModelCost(inpTokens, outTokens, hitTokens, modelName) {
+    const p = zpGetModelPrice(modelName);
+    const cost = ((Number(inpTokens) || 0) * p.input +
+                  (Number(outTokens) || 0) * p.output +
+                  (Number(hitTokens) || 0) * p.cacheHit) / 1000000.0;
+    return Math.max(0, cost);
+  }
+
+  // 预算卡多源数据缓存
+  const ZP_BUDGET_CACHE = {
+    todaySources: null,
+    mtdSources: null,
+    lastFetched: 0,
+    isFetching: false
+  };
+
+  function zpCalcSourcesCost(sourcesPayload) {
+    if (!sourcesPayload || !Array.isArray(sourcesPayload.sources)) return 0;
+    const selectedIds = new Set(state.enabledModelSources || []);
+    let totalCost = 0;
+    sourcesPayload.sources.forEach(src => {
+      if (src.available !== true) return;
+      if (selectedIds.size > 0 && !selectedIds.has(src.id)) return;
+      (src.models || []).forEach(m => {
+        const inp = Number(m.input) || 0;
+        const out = Number(m.output) || 0;
+        const cr = Number(m.cache_read) || 0;
+        totalCost += zpCalcModelCost(inp, out, cr, m.model);
+      });
+    });
+    return totalCost;
+  }
+
   // ============ 预算卡 ============
-  function zpRenderBudget() {
-    const daily = state.dailyData || [];
-    const byDay = {};
-    daily.forEach(d => { byDay[d.date] = Number(d.cost_usd) || 0; });
-    const todayKey = zpLocalDateKey(new Date());
-    const yKey = zpLocalDateKey(new Date(Date.now() - 86400e3));
-    const today = byDay[todayKey] || 0, yest = byDay[yKey] || 0;
-    const now = new Date();
-    const monthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    let mtd = 0;
-    Object.keys(byDay).forEach(k => { if (k.startsWith(monthPrefix)) mtd += byDay[k]; });
-    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-    const forecast = mtd / now.getDate() * daysInMonth;
-    const last30 = daily.slice(-30);
-    const avg30 = last30.length ? last30.reduce((a, d) => a + (Number(d.cost_usd) || 0), 0) / last30.length : 0;
+  function zpRenderBudget(force = false) {
     let budget = null;
     try { budget = Number(localStorage.getItem('zpMonthlyBudget')) || null; } catch (e) { }
+
+    const customPricing = zpGetCustomPricing();
+    const customCount = Object.keys(customPricing).length;
+    const badge = zpEl('zpBudgetPricingBadge');
+    if (badge) {
+      badge.textContent = customCount > 0 ? `自定义定价 (${customCount})` : '官方定价';
+      badge.title = customCount > 0
+        ? `当前已自定义 ${customCount} 个模型价格，点击配置`
+        : '当前全部模型使用官方 API 标准定价，点击配置';
+      badge.className = 'zp-chip ' + (customCount > 0 ? 'coral' : '');
+    }
+
+    const now = new Date();
+    const passedDays = Math.max(1, now.getDate());
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+
+    // 优先使用缓存或即时已有的 modelSourcesData
+    const todayPayload = ZP_BUDGET_CACHE.todaySources ||
+      (state.modelSourcesData && (state.timeWindow === '1' || state.timeWindow === 'today') ? state.modelSourcesData : null);
+    const mtdPayload = ZP_BUDGET_CACHE.mtdSources ||
+      (state.modelSourcesData && (state.timeWindow === '30' || state.timeWindow === 'all') ? state.modelSourcesData : null);
+
+    let todayCost = todayPayload ? zpCalcSourcesCost(todayPayload) : 0;
+    let mtdCost = mtdPayload ? zpCalcSourcesCost(mtdPayload) : 0;
+
+    // 本月花费保底大于等于今日花费
+    if (mtdCost < todayCost) {
+      mtdCost = todayCost;
+    }
+
+    const forecast = (mtdCost / passedDays) * daysInMonth;
+    const avgDay = mtdCost / passedDays;
+
     const circle = zpEl('zpBudgetToday');
-    if (circle) circle.textContent = zpMoney(today);
+    if (circle) circle.textContent = zpMoney(todayCost);
     const circleBox = zpEl('zpBudgetCircle');
-    if (circleBox) circleBox.title = budget ? `月预算 ${zpMoney(budget)} · 本月已用 ${zpMoney(mtd)}（${(mtd / budget * 100).toFixed(0)}%）` : '点右上「设置预算」可设月度预算';
+    if (circleBox) circleBox.title = budget
+      ? `月预算 ${zpMoney(budget)} · 本月已用 ${zpMoney(mtdCost)}（${(mtdCost / budget * 100).toFixed(0)}%）`
+      : `本月已用 ${zpMoney(mtdCost)} · 点右上「设置预算」可设月度预算`;
     const r1 = zpEl('zpBudgetTodayRow');
-    if (r1) r1.textContent = zpMoney(today);
+    if (r1) r1.textContent = zpMoney(todayCost);
     const r2 = zpEl('zpBudgetMonth');
-    if (r2) r2.textContent = zpMoney(mtd);
+    if (r2) r2.textContent = zpMoney(mtdCost);
     const r3 = zpEl('zpBudgetForecast');
     if (r3) {
       r3.textContent = zpMoney(forecast) + (budget ? ` / ${zpMoney(budget)}` : '');
       r3.style.color = budget && forecast > budget ? 'var(--zp-coral)' : 'var(--zp-ink)';
     }
     const r4 = zpEl('zpBudgetAvg');
-    if (r4) r4.textContent = `${zpMoney(yest)} / ${zpMoney(avg30)}`;
+    if (r4) r4.textContent = zpMoney(avgDay);
+
     const btn = zpEl('zpBudgetBtn');
     if (btn) btn.textContent = budget ? '修改预算' : '设置预算';
+
+    // 触发异步更新最新模型数据（节流：60秒内且非强制时不重复拉取）
+    const cacheAge = Date.now() - ZP_BUDGET_CACHE.lastFetched;
+    if ((force || cacheAge >= 60000 || !ZP_BUDGET_CACHE.todaySources || !ZP_BUDGET_CACHE.mtdSources) && !ZP_BUDGET_CACHE.isFetching) {
+      ZP_BUDGET_CACHE.isFetching = true;
+      const mStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
+      const mStartTs = Math.floor(mStart.getTime() / 1000);
+
+      Promise.allSettled([
+        fetchWithTimeout('/api/stats/model-sources?days=1', 12000),
+        fetchWithTimeout(`/api/stats/model-sources?start=${mStartTs}`, 15000)
+      ]).then(([resToday, resMtd]) => {
+        ZP_BUDGET_CACHE.isFetching = false;
+        ZP_BUDGET_CACHE.lastFetched = Date.now();
+        if (resToday.status === 'fulfilled' && resToday.value) {
+          ZP_BUDGET_CACHE.todaySources = resToday.value;
+        }
+        if (resMtd.status === 'fulfilled' && resMtd.value) {
+          ZP_BUDGET_CACHE.mtdSources = resMtd.value;
+        }
+        // 拉取完成后再静默触发一次计算渲染，刷新最新值
+        zpRenderBudget(false);
+      }).catch(() => {
+        ZP_BUDGET_CACHE.isFetching = false;
+      });
+    }
+  }
+
+  // ============ 模型价格设置模态框 ============
+  function zpCollectKnownModels() {
+    const set = new Set();
+    if (state.modelSourcesData && Array.isArray(state.modelSourcesData.sources)) {
+      state.modelSourcesData.sources.forEach(s => {
+        (s.models || []).forEach(m => { if (m.model) set.add(m.model); });
+      });
+    }
+    [ZP_BUDGET_CACHE.todaySources, ZP_BUDGET_CACHE.mtdSources].forEach(srcPayload => {
+      if (srcPayload && Array.isArray(srcPayload.sources)) {
+        srcPayload.sources.forEach(s => {
+          (s.models || []).forEach(m => { if (m.model) set.add(m.model); });
+        });
+      }
+    });
+    const custom = zpGetCustomPricing();
+    Object.keys(custom).forEach(k => { if (k) set.add(k); });
+    const commonModels = [
+      'claude-3-7-sonnet', 'claude-3-5-sonnet', 'claude-3-opus', 'claude-3-5-haiku',
+      'gpt-4o', 'gpt-4o-mini', 'o1', 'o3-mini',
+      'deepseek-chat', 'deepseek-reasoner',
+      'gemini-2.0-flash', 'gemini-1.5-pro',
+      'GLM-5.3-Flash', 'GLM-5.3', 'qwen-plus'
+    ];
+    commonModels.forEach(m => set.add(m));
+    return Array.from(set).sort();
+  }
+
+  let _zpPricingModalList = [];
+
+  function zpOpenPricingModal() {
+    const overlay = zpEl('zpPricingModalOverlay');
+    if (!overlay) return;
+    _zpPricingModalList = zpCollectKnownModels();
+    zpRenderPricingTable();
+    overlay.style.display = 'flex';
+    const sInput = zpEl('zpPricingSearchInput');
+    if (sInput) { sInput.value = ''; sInput.focus(); }
+    const hint = zpEl('zpPricingHintText');
+    if (hint) { hint.textContent = '修改数值后点击“保存并生效”立即刷新预算'; hint.style.color = 'var(--tx3)'; }
+  }
+
+  function zpClosePricingModal() {
+    const overlay = zpEl('zpPricingModalOverlay');
+    if (overlay) overlay.style.display = 'none';
+  }
+
+  function zpRenderPricingTable(searchTerm = '') {
+    const tbody = zpEl('zpPricingTableBody');
+    if (!tbody) return;
+    const filter = (searchTerm || '').toLowerCase().trim();
+    const filtered = filter ? _zpPricingModalList.filter(m => m.toLowerCase().includes(filter)) : _zpPricingModalList;
+
+    if (!filtered.length) {
+      tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--tx3)">未匹配到模型，可点击上方「添加模型」新建</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = filtered.map(model => {
+      const p = zpGetModelPrice(model);
+      const isCustom = p.isCustom;
+      return `
+        <tr data-model="${escapeHtml(model)}">
+          <td style="font-weight:600;color:var(--tx);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(model)}">
+            ${escapeHtml(model)}
+          </td>
+          <td>
+            <input type="number" step="0.001" min="0" class="zp-pricing-input" data-field="input" value="${p.input}" placeholder="0.00">
+          </td>
+          <td>
+            <input type="number" step="0.001" min="0" class="zp-pricing-input" data-field="output" value="${p.output}" placeholder="0.00">
+          </td>
+          <td>
+            <input type="number" step="0.001" min="0" class="zp-pricing-input" data-field="cacheHit" value="${p.cacheHit}" placeholder="0.00">
+          </td>
+          <td style="text-align:center;">
+            <span class="${isCustom ? 'zp-pricing-badge-custom' : 'zp-pricing-badge-default'}">
+              ${isCustom ? '自定义' : '官方默认'}
+            </span>
+          </td>
+          <td style="text-align:center;">
+            <button type="button" class="btn-ghost sm" data-action="reset-row" title="重置为此模型的官方默认价" style="padding:2px 6px;border:none;cursor:pointer;">
+              <i class="ph ph-arrow-counter-clockwise"></i>
+            </button>
+          </td>
+        </tr>
+      `;
+    }).join('');
   }
 
   // ============ 统计来源 chip ============
@@ -3265,7 +3529,7 @@
       });
     }
     const quotaRefresh = zpEl('zpQuotaRefreshBtn');
-    if (quotaRefresh) {
+    if (quotaRefresh && typeof refreshQuota === 'function') {
       quotaRefresh.addEventListener('click', refreshQuota);
     }
     const srcBtn = zpEl('zpSourceBtn'), pop = zpEl('zpSourcePop');
@@ -3432,8 +3696,121 @@
       try { localStorage.removeItem('zpMonthlyBudget'); } catch (e) { }
       const input = zpEl('zpBudgetInput');
       if (input) input.value = '';
-      zpRenderBudget();
+      zpRenderBudget(true);
     });
+
+    // 模型价格设置入口与模态框绑定
+    const bPricingBtn = zpEl('zpBudgetPricingBtn');
+    if (bPricingBtn) bPricingBtn.addEventListener('click', zpOpenPricingModal);
+    const bPricingBadge = zpEl('zpBudgetPricingBadge');
+    if (bPricingBadge) bPricingBadge.addEventListener('click', zpOpenPricingModal);
+
+    const closePricingBtn = zpEl('btnCloseZpPricingModal');
+    if (closePricingBtn) closePricingBtn.addEventListener('click', zpClosePricingModal);
+    const cancelPricingBtn = zpEl('btnCancelZpPricingModal');
+    if (cancelPricingBtn) cancelPricingBtn.addEventListener('click', zpClosePricingModal);
+    const pricingOverlay = zpEl('zpPricingModalOverlay');
+    if (pricingOverlay) {
+      pricingOverlay.addEventListener('click', e => {
+        if (e.target === pricingOverlay) zpClosePricingModal();
+      });
+    }
+
+    const pricingSearch = zpEl('zpPricingSearchInput');
+    if (pricingSearch) {
+      pricingSearch.addEventListener('input', e => {
+        zpRenderPricingTable(e.target.value);
+      });
+    }
+
+    const btnAddCustom = zpEl('btnZpAddCustomModel');
+    if (btnAddCustom) {
+      btnAddCustom.addEventListener('click', () => {
+        const mName = prompt('请输入要添加的模型名称（例如 claude-3-5-sonnet 或 gpt-4o）：');
+        if (mName && mName.trim()) {
+          const key = mName.trim();
+          if (!_zpPricingModalList.includes(key)) {
+            _zpPricingModalList.unshift(key);
+          }
+          zpRenderPricingTable(zpEl('zpPricingSearchInput')?.value || '');
+        }
+      });
+    }
+
+    const btnResetAllPricing = zpEl('btnZpResetPricing');
+    if (btnResetAllPricing) {
+      btnResetAllPricing.addEventListener('click', () => {
+        if (confirm('确定要清空全部自定义模型价格，恢复为官方 API 默认定价吗？')) {
+          zpSaveCustomPricing({});
+          zpRenderPricingTable(zpEl('zpPricingSearchInput')?.value || '');
+          const hint = zpEl('zpPricingHintText');
+          if (hint) {
+            hint.textContent = '已恢复官方默认定价，点击“保存并生效”更新';
+            hint.style.color = 'var(--zp-coral)';
+          }
+        }
+      });
+    }
+
+    const tBodyPricing = zpEl('zpPricingTableBody');
+    if (tBodyPricing) {
+      tBodyPricing.addEventListener('click', e => {
+        const resetBtn = e.target.closest('[data-action="reset-row"]');
+        if (!resetBtn) return;
+        const row = resetBtn.closest('tr');
+        if (!row) return;
+        const model = row.getAttribute('data-model');
+        const def = zpGetDefaultPricing(model);
+        const inInp = row.querySelector('[data-field="input"]');
+        const outInp = row.querySelector('[data-field="output"]');
+        const hitInp = row.querySelector('[data-field="cacheHit"]');
+        if (inInp) inInp.value = def.input;
+        if (outInp) outInp.value = def.output;
+        if (hitInp) hitInp.value = def.cacheHit;
+        const badge = row.querySelector('.zp-pricing-badge-custom, .zp-pricing-badge-default');
+        if (badge) {
+          badge.className = 'zp-pricing-badge-default';
+          badge.textContent = '官方默认';
+        }
+      });
+      tBodyPricing.addEventListener('input', e => {
+        const inp = e.target.closest('.zp-pricing-input');
+        if (!inp) return;
+        const row = inp.closest('tr');
+        if (!row) return;
+        const badge = row.querySelector('.zp-pricing-badge-custom, .zp-pricing-badge-default');
+        if (badge) {
+          badge.className = 'zp-pricing-badge-custom';
+          badge.textContent = '自定义';
+        }
+      });
+    }
+
+    const btnSavePricing = zpEl('btnSaveZpPricingModal');
+    if (btnSavePricing) {
+      btnSavePricing.addEventListener('click', () => {
+        const customMap = zpGetCustomPricing();
+        const rows = document.querySelectorAll('#zpPricingTableBody tr[data-model]');
+        rows.forEach(row => {
+          const model = row.getAttribute('data-model');
+          if (!model) return;
+          const inVal = Number(row.querySelector('[data-field="input"]')?.value) || 0;
+          const outVal = Number(row.querySelector('[data-field="output"]')?.value) || 0;
+          const hitVal = Number(row.querySelector('[data-field="cacheHit"]')?.value) || 0;
+          const def = zpGetDefaultPricing(model);
+          if (Math.abs(inVal - def.input) > 0.000001 ||
+              Math.abs(outVal - def.output) > 0.000001 ||
+              Math.abs(hitVal - def.cacheHit) > 0.000001) {
+            customMap[model] = { input: inVal, output: outVal, cacheHit: hitVal };
+          } else {
+            delete customMap[model];
+          }
+        });
+        zpSaveCustomPricing(customMap);
+        zpClosePricingModal();
+        zpRenderBudget(true);
+      });
+    }
     // 统计来源变化 → 顶部 chip 同步（原监听器仍负责口径逻辑）
     const picker = zpEl('modelSourcePicker');
     if (picker) {
@@ -11158,6 +11535,11 @@
   let cleanerPollTimer = null;
   let cleanerCleanTimer = null;
   let cleanerInitialized = false;
+  let cleanerAiReportText = '';
+  let cleanerAiReportPath = '';
+  let snifferActive = false;
+  let snifferCurrentData = null;
+  let snifferSelectedNode = null;
 
   const cleanerH = n => {
     const u = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -11167,6 +11549,11 @@
   };
 
   function initCleaner() {
+    try {
+      loadCleanerDrives();
+    } catch (e) {
+      console.error('initCleaner loadCleanerDrives error:', e);
+    }
     if (!cleanerInitialized) {
       cleanerInitialized = true;
       const btnScan = document.getElementById('cleanerBtnScan');
@@ -11177,6 +11564,32 @@
       if (btnWinapp2) btnWinapp2.onclick = openCleanerWinapp2;
       const btnElevate = document.getElementById('cleanerBtnElevate');
       if (btnElevate) btnElevate.onclick = cleanerElevate;
+      const btnToggleSniffer = document.getElementById('cleanerBtnToggleSniffer');
+      if (btnToggleSniffer) btnToggleSniffer.onclick = () => toggleCleanerSniffer();
+      const btnLaunchNative = document.getElementById('cleanerBtnLaunchNative');
+      if (btnLaunchNative) btnLaunchNative.onclick = () => launchNativeSpaceSniffer();
+      const btnSnifferNativeLaunch = document.getElementById('cleanerSnifferNativeLaunch');
+      if (btnSnifferNativeLaunch) btnSnifferNativeLaunch.onclick = () => launchNativeSpaceSniffer();
+      const btnAiReport = document.getElementById('cleanerBtnAiReport');
+      if (btnAiReport) btnAiReport.onclick = openCleanerAiReport;
+      const btnCloseAi = document.getElementById('cleanerBtnCloseAiModal');
+      if (btnCloseAi) btnCloseAi.onclick = closeCleanerAiReport;
+      const btnCopyAi = document.getElementById('cleanerBtnCopyAiMd');
+      if (btnCopyAi) btnCopyAi.onclick = copyCleanerAiReport;
+      const btnDlAi = document.getElementById('cleanerBtnDownloadAiMd');
+      if (btnDlAi) btnDlAi.onclick = downloadCleanerAiReport;
+      const btnSnifferClose = document.getElementById('cleanerSnifferClose');
+      if (btnSnifferClose) btnSnifferClose.onclick = () => toggleCleanerSniffer(false);
+      const btnSnifferAnalyze = document.getElementById('cleanerSnifferAnalyze');
+      if (btnSnifferAnalyze) btnSnifferAnalyze.onclick = runCleanerSniffer;
+      const btnSnifferBack = document.getElementById('cleanerSnifferBack');
+      if (btnSnifferBack) btnSnifferBack.onclick = snifferGoUp;
+      const btnSnifferOpenExp = document.getElementById('cleanerSnifferOpenExplorer');
+      if (btnSnifferOpenExp) btnSnifferOpenExp.onclick = openSnifferInExplorer;
+      const snifferInput = document.getElementById('cleanerSnifferInput');
+      if (snifferInput) {
+        snifferInput.onkeydown = e => { if (e.key === 'Enter') runCleanerSniffer(); };
+      }
       const chkAll = document.getElementById('cleanerChkAll');
       if (chkAll) chkAll.onchange = e => toggleCleanerAll(e.target.checked);
       const btnSelSafe = document.getElementById('cleanerBtnSelSafe');
@@ -11190,7 +11603,6 @@
       const btnDoClean = document.getElementById('cleanerBtnDoClean');
       if (btnDoClean) btnDoClean.onclick = () => doCleanerClean(false);
     }
-    loadCleanerDrives();
     fetch('/api/cleaner/status').then(r => r.json()).then(s => {
       if (s.has_result) loadCleanerResult();
       else if (s.scanning) {
@@ -11203,14 +11615,21 @@
     }).catch(() => {});
   }
 
-  async function loadCleanerDrives() {
+  async function loadCleanerDrives(retryCount = 0) {
+    const bar = document.getElementById('cleanerDrives');
+    if (!bar) return;
+    if (!bar.children.length || bar.querySelector('.cleaner-drive-error') || retryCount > 0) {
+      bar.innerHTML = `<div class="cleaner-drive-loading"><div class="cleaner-spinner"></div><span>正在读取本机磁盘信息...</span></div>`;
+    }
     try {
       const resp = await fetch('/api/cleaner/drives');
-      if (!resp.ok) return;
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
       const j = await resp.json();
       cleanerDrives = j.drives || [];
-      const bar = document.getElementById('cleanerDrives');
-      if (!bar) return;
+      if (!cleanerDrives.length) {
+        bar.innerHTML = `<div class="cleaner-drive-error">未检测到可用磁盘，<button type="button" class="btn-ghost sm" onclick="loadCleanerDrives(1)"><i class="ph ph-arrow-counter-clockwise"></i> 刷新</button></div>`;
+        return;
+      }
       const waBadge = document.getElementById('cleanerWaBadge');
       if (waBadge) {
         waBadge.textContent = j.has_winapp2 ? '社区规则库 (已启用)' : '社区规则库 (可更新)';
@@ -11245,8 +11664,14 @@
       }
     } catch (e) {
       console.error('loadCleanerDrives failed:', e);
+      if (retryCount < 2) {
+        setTimeout(() => loadCleanerDrives(retryCount + 1), 600);
+      } else {
+        bar.innerHTML = `<div class="cleaner-drive-error">读取磁盘失败 (${escapeHtml(e.message || String(e))})，<button type="button" class="btn-ghost sm" onclick="loadCleanerDrives(1)"><i class="ph ph-arrow-counter-clockwise"></i> 点击重试</button></div>`;
+      }
     }
   }
+  window.loadCleanerDrives = loadCleanerDrives;
 
   function toggleCleanerDrive(i, force) {
     const d = cleanerDrives[i];
@@ -11329,6 +11754,10 @@
           if (box) box.classList.remove('show');
           if (btnScan) btnScan.disabled = false;
           await loadCleanerResult();
+          if (window._autoOpenAiReportAfterScan) {
+            window._autoOpenAiReportAfterScan = false;
+            openCleanerAiReport();
+          }
         }
       } catch (e) {
         pollCleanerStatus();
@@ -11502,18 +11931,37 @@
 
           <div class="cleaner-path">${escapeHtml(c.path)}</div>
 
+          ${(c.project_warning || c.is_project) ? `
+          <div class="cleaner-proj-warn">
+            <i class="ph ph-shield-warning"></i>
+            <span>${escapeHtml(c.project_warning || `属于本地开发工程【${c.project_name || '代码工程'}】，代码受写保护；若清理需重建依赖`)}</span>
+          </div>` : ''}
+
           ${c.insight ? `
           <div class="cleaner-insight">
             <i class="ph ph-lightbulb"></i>
             <span>${escapeHtml(c.insight)}</span>
           </div>` : ''}
 
-          ${(c.purpose || c.recreate_cost || c.advice || c.description) ? `
           <div class="cleaner-smart-meta">
-            ${c.purpose ? `<div class="cleaner-meta-row"><span class="cleaner-meta-lbl">用途：</span><span class="cleaner-meta-val">${escapeHtml(c.purpose)}</span></div>` : (c.description ? `<div class="cleaner-meta-row"><span class="cleaner-meta-lbl">说明：</span><span class="cleaner-meta-val">${escapeHtml(c.description)}</span></div>` : '')}
-            ${c.recreate_cost ? `<div class="cleaner-meta-row"><span class="cleaner-meta-lbl">影响：</span><span class="cleaner-meta-val">${escapeHtml(c.recreate_cost)}</span></div>` : ''}
-            ${c.advice ? `<div class="cleaner-meta-row"><span class="cleaner-meta-lbl">建议：</span><span class="cleaner-meta-val highlight">${escapeHtml(c.advice)}</span></div>` : ''}
-          </div>` : ''}
+            <div class="cleaner-meta-row">
+              <span class="cleaner-meta-lbl lbl-purpose">用途</span>
+              <span class="cleaner-meta-val">${escapeHtml(c.purpose || c.description || (c.category_name ? `${c.category_name}相关缓存与临时文件` : '软件运行临时缓存'))}</span>
+            </div>
+            <div class="cleaner-meta-row">
+              <span class="cleaner-meta-lbl lbl-impact">影响</span>
+              <span class="cleaner-meta-val">${escapeHtml(c.recreate_cost || (c.risk === 'safe' ? '完全无损。临时交换或安装缓存，删除后系统或应用在需要时会自动重新创建。' : (c.risk === 'review' ? '不影响代码源文件。下次运行或调试时需重新下载/加载对应资源。' : '请谨慎核实，可能包含本地配置或资产。')))}</span>
+            </div>
+            <div class="cleaner-meta-row">
+              <span class="cleaner-meta-lbl lbl-advice">建议</span>
+              <span class="cleaner-meta-val highlight">${escapeHtml(c.advice || (c.risk === 'safe' ? '🟢 推荐清理：无副作用，可直接释放空间' : (c.risk === 'review' ? '🟡 建议确认：若近期不使用该工程/工具可清理' : '🔴 建议保留：存在一定重建成本')))}</span>
+            </div>
+            ${c.recovery_cmd ? `
+            <div class="cleaner-meta-row">
+              <span class="cleaner-meta-lbl lbl-recovery">恢复方案</span>
+              <span class="cleaner-meta-val recovery-cmd">${escapeHtml(c.recovery_cmd)}</span>
+            </div>` : ''}
+          </div>
         </td>
       </tr>`).join('');
     updateCleanerSel();
@@ -11749,6 +12197,652 @@
     }
   }
 
+  // ============================================================
+  // AI 决策审计报告生成与导出
+  // ============================================================
+  function generateClientAiReport(candidates, drives) {
+    const nowStr = new Date().toLocaleString('zh-CN', { hour12: false });
+    const totalSize = (candidates || []).reduce((s, c) => s + (c.size || 0), 0);
+    const totalCount = (candidates || []).length;
+
+    const projCands = (candidates || []).filter(c => c.is_project || c.project_root || (c.project_warning && c.project_warning.length > 0));
+    const safeCands = (candidates || []).filter(c => c.risk === 'safe' && !c.is_project);
+    const reviewCands = (candidates || []).filter(c => c.risk === 'review' && !c.is_project);
+
+    const lines = [];
+    lines.push("# 🤖 磁盘清理与资产安全 AI 决策审计报告");
+    lines.push("");
+    lines.push(`> **生成时间**：${nowStr}`);
+    lines.push(`> **扫描候选**：**${totalCount}** 项 | 逻辑释放潜力：**${cleanerH(totalSize)}**`);
+    lines.push("");
+    lines.push("## 🎯 给 AI 助手的审计指令 (Prompt to AI)");
+    lines.push("```text");
+    lines.push("你是一位资深的系统运维与全栈研发架构专家。");
+    lines.push("请仔细审阅以下从用户电脑真实扫描出的【待清理候选清单】。重点审查以下风险：");
+    lines.push("1. 本地代码工程与 Git 仓库：严格排查是否影响正在活跃开发的代码、是否包含未提交文件、重建依赖是否需要特殊网络/私有 Token；");
+    lines.push("2. AI 模型与预训练权重：评估体积大、下载昂贵的大模型文件（HuggingFace / Ollama / PyTorch），确认是否仍有使用价值；");
+    lines.push("3. 系统与日常软件缓存：识别可零风险清除的纯临时垃圾；");
+    lines.push("请在审阅后，按以下三部分给出明确裁决：");
+    lines.push("  [1] 【推荐直接清理清单】（注明预计释放体积，并给出确认理由）");
+    lines.push("  [2] 【强烈建议保留清单】（详细说明为何不能动、动了会有何后果）");
+    lines.push("  [3] 【一键安全清理执行建议】（提供可直接执行的精简路径或 CLI 命令）");
+    lines.push("```");
+    lines.push("");
+
+    if (drives && drives.length > 0) {
+      lines.push("## 📊 一、各盘扫描概况");
+      lines.push("| 盘符 | 类型 | 剩余空间 | 使用率 | 状态 |");
+      lines.push("|---|---|---|---|---|");
+      drives.forEach(d => {
+        lines.push(`| ${d.drive} | ${d.label || '本地磁盘'} | 剩 ${cleanerH(d.free)} | ${d.used_pct}% | ${d.used_pct >= 85 ? '🔴 很满' : (d.used_pct >= 70 ? '🟡 偏满' : '🟢 充裕')} |`);
+      });
+      lines.push("");
+    }
+
+    lines.push(`## 🏢 二、本地代码工程相关项 (${projCands.length} 项，共 ${cleanerH(projCands.reduce((s, c) => s + (c.size || 0), 0))})`);
+    if (projCands.length > 0) {
+      lines.push("*⚠️ 注意：以下清理项位于用户的本地开发工程或代码仓库内。虽然清理不会删除源代码文件（保存在 src/ 等目录下），但会清空本地依赖库或编译产物。*");
+      lines.push("");
+      projCands.forEach((c, idx) => {
+        lines.push(`### ${idx + 1}. \`[${c.project_name || '本地工程'}]\` ${c.title}`);
+        lines.push(`- **绝对路径**：\`${c.path}\``);
+        lines.push(`- **占用体积**：**${c.size_h}** (${(c.size || 0).toLocaleString()} 字节) ${c.is_dir ? '(目录 📁)' : '(单文件 📄)'}`);
+        lines.push(`- **归属工程根**：\`${c.project_root || '未明确工程根'}\``);
+        lines.push(`- **所属应用/框架**：${c.owner_app || '前端/通用工程'}`);
+        lines.push(`- **缓存性质**：${c.cache_type || '项目依赖/构建产物'}`);
+        lines.push(`- **详细用途**：${c.purpose || c.description || '工程日常编译产物或第三方依赖库'}`);
+        lines.push(`- **清理后果与重建代价**：${c.recreate_cost || '无损工程代码。下次运行需重新安装依赖或编译。'}`);
+        lines.push(`- **规则建议**：${c.advice || '活跃项目建议保留；已归档工程可清理。'}`);
+        if (c.recovery_cmd) lines.push(`- **恢复命令**：\`${c.recovery_cmd}\``);
+        if (c.insight) lines.push(`- **智能探针洞察**：\`${c.insight}\``);
+        lines.push("");
+      });
+    } else {
+      lines.push("*(未检测到本地代码工程相关的待清理项，安全。)*\n");
+    }
+
+    const aiCands = (candidates || []).filter(c => (c.category === 'ai' || (c.path || '').toLowerCase().includes('huggingface') || (c.path || '').toLowerCase().includes('ollama')));
+    lines.push(`## 🧠 三、AI 模型权重与大模型缓存 (${aiCands.length} 项，共 ${cleanerH(aiCands.reduce((s, c) => s + (c.size || 0), 0))})`);
+    if (aiCands.length > 0) {
+      lines.push("*⚠️ 注意：大模型文件通常体积巨大且下载流量高昂，请结合自身实际使用频率裁决。*");
+      lines.push("");
+      aiCands.forEach((c, idx) => {
+        lines.push(`### ${idx + 1}. ${c.title}`);
+        lines.push(`- **绝对路径**：\`${c.path}\``);
+        lines.push(`- **占用体积**：**${c.size_h}**`);
+        lines.push(`- **所属工具**：${c.owner_app || 'AI 工具链'}`);
+        lines.push(`- **详细用途**：${c.purpose || '模型权重或推理缓存'}`);
+        lines.push(`- **清理后果**：${c.recreate_cost || '删除后若代码重新推理需耗时重新下载大量流量。'}`);
+        lines.push(`- **建议**：${c.advice || '只有确定不再使用的模型才建议删除。'}`);
+        if (c.insight) lines.push(`- **包含模型**：\`${c.insight}\``);
+        lines.push("");
+      });
+    } else {
+      lines.push("*(未检测到大体积 AI 模型缓存。)*\n");
+    }
+
+    lines.push(`## ⚡ 四、系统与应用安全垃圾项 (${safeCands.length} 项，共 ${cleanerH(safeCands.reduce((s, c) => s + (c.size || 0), 0))})`);
+    lines.push("*此类通常属于已安装更新残留、临时交换文件、网页离线静态副本，删后完全无损，下次按需重建。*");
+    lines.push("");
+    if (safeCands.length > 0) {
+      lines.push("| 序号 | 规则名称 | 体积 | 绝对路径 | 详细用途 | 影响与重建 |");
+      lines.push("|---|---|---|---|---|---|");
+      safeCands.slice(0, 40).forEach((c, idx) => {
+        const purp = (c.purpose || c.description || '临时交换文件').replace(/\|/g, ' ');
+        const cost = (c.recreate_cost || '完全无损，自动重建').replace(/\|/g, ' ');
+        lines.push(`| ${idx + 1} | ${c.title} | **${c.size_h}** | \`${c.path}\` | ${purp} | ${cost} |`);
+      });
+      if (safeCands.length > 40) {
+        lines.push(`| ... | 另有 ${safeCands.length - 40} 个小项省略呈现 | ... | ... | ... | ... |`);
+      }
+      lines.push("");
+    } else {
+      lines.push("*(无安全项)*\n");
+    }
+
+    const otherReview = reviewCands.filter(c => !aiCands.includes(c));
+    lines.push(`## ⚠️ 五、建议审阅项与备份档案 (${otherReview.length} 项，共 ${cleanerH(otherReview.reduce((s, c) => s + (c.size || 0), 0))})`);
+    if (otherReview.length > 0) {
+      lines.push("| 序号 | 规则名称 | 体积 | 绝对路径 | 建议说明 |");
+      lines.push("|---|---|---|---|---|");
+      otherReview.forEach((c, idx) => {
+        const adv = (c.advice || c.purpose || '建议确认后再清理').replace(/\|/g, ' ');
+        lines.push(`| ${idx + 1} | ${c.title} | **${c.size_h}** | \`${c.path}\` | ${adv} |`);
+      });
+      lines.push("");
+    } else {
+      lines.push("*(无其它建议审阅项)*\n");
+    }
+
+    lines.push("---");
+    lines.push("## 📝 请 AI 专家开始裁决");
+    lines.push("请通读上述各区清单，综合考虑 Master 的磁盘健康度与研发资产安全性，给出精确到项的决策指导方案。");
+
+    return lines.join("\n");
+  }
+
+  async function openCleanerAiReport() {
+    if (!cleanerCands || cleanerCands.length === 0) {
+      const wantScan = confirm('当前尚未执行扫描，待清理候选清单为空。\n是否立即执行快速扫描，并在完成后自动呈现 AI 决策审计报告？');
+      if (wantScan) {
+        window._autoOpenAiReportAfterScan = true;
+        startCleanerScan();
+      }
+      return;
+    }
+    const modal = document.getElementById('cleanerAiModalOverlay');
+    const pre = document.getElementById('cleanerAiPre');
+    const saveHint = document.getElementById('cleanerAiSaveHint');
+    if (!modal || !pre) return;
+
+    pre.textContent = '正在汇总资产分析与画像溯源，生成决策审计报告...';
+    modal.style.display = 'flex';
+
+    try {
+      const resp = await fetch('/api/cleaner/export_ai_report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}'
+      });
+      if (resp.ok) {
+        const j = await resp.json();
+        cleanerAiReportText = j.markdown || '';
+        cleanerAiReportPath = j.filepath || '';
+        pre.textContent = cleanerAiReportText;
+        if (saveHint) saveHint.textContent = cleanerAiReportPath ? `已留档: ${cleanerAiReportPath}` : '';
+        return;
+      }
+    } catch (_) {}
+
+    cleanerAiReportText = generateClientAiReport(cleanerCands, cleanerDrives);
+    cleanerAiReportPath = '';
+    pre.textContent = cleanerAiReportText;
+    if (saveHint) saveHint.textContent = '即时生成 (可直接复制或下载)';
+  }
+
+  function closeCleanerAiReport() {
+    const modal = document.getElementById('cleanerAiModalOverlay');
+    if (modal) modal.style.display = 'none';
+  }
+
+  function copyCleanerAiReport() {
+    if (!cleanerAiReportText) return;
+    navigator.clipboard.writeText(cleanerAiReportText).then(() => {
+      const btn = document.getElementById('cleanerBtnCopyAiMd');
+      if (btn) {
+        const orig = btn.innerHTML;
+        btn.innerHTML = '<i class="ph ph-check"></i> 已复制到剪贴板！';
+        setTimeout(() => { btn.innerHTML = orig; }, 2000);
+      }
+    }).catch(err => {
+      alert('复制失败，请直接在文本框全选复制: ' + err);
+    });
+  }
+
+  function downloadCleanerAiReport() {
+    if (!cleanerAiReportText) return;
+    const blob = new Blob([cleanerAiReportText], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const dStr = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
+    a.href = url;
+    a.download = `ai_cleanup_decision_${dStr}.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  // ============================================================
+  // SpaceSniffer 空间透视矩形树图交互引擎
+  // ============================================================
+  function toggleCleanerSniffer(show) {
+    if (show === undefined) snifferActive = !snifferActive;
+    else snifferActive = !!show;
+
+    const sView = document.getElementById('cleanerSnifferView');
+    const mainView = document.getElementById('cleanerMain');
+    const cardsView = document.getElementById('cleanerCards');
+    const emptyView = document.getElementById('cleanerEmpty');
+    const dSummView = document.getElementById('cleanerDriveSumm');
+    const actBar = document.getElementById('cleanerActionbar');
+    const btnToggle = document.getElementById('cleanerBtnToggleSniffer');
+
+    if (snifferActive) {
+      if (sView) sView.style.display = 'block';
+      if (mainView) mainView.style.display = 'none';
+      if (cardsView) cardsView.style.display = 'none';
+      if (emptyView) emptyView.style.display = 'none';
+      if (dSummView) dSummView.style.display = 'none';
+      if (actBar) actBar.style.display = 'none';
+      if (btnToggle) {
+        btnToggle.classList.add('active');
+        btnToggle.innerHTML = '<i class="ph ph-list-dashes"></i> 返回清理列表';
+      }
+      renderSnifferDrivePills();
+      if (!snifferCurrentData) {
+        let initialPath = 'F:\\AI-hub\\workroom';
+        if (cleanerDrives && cleanerDrives.length > 0) {
+          const d = cleanerDrives.find(x => x.drive.toUpperCase().startsWith('F')) || cleanerDrives[0];
+          initialPath = d.drive;
+        }
+        const input = document.getElementById('cleanerSnifferInput');
+        if (input) input.value = initialPath;
+        loadSnifferTree(initialPath);
+      }
+    } else {
+      if (sView) sView.style.display = 'none';
+      if (cardsView) cardsView.style.display = cleanerCands.length ? 'grid' : 'none';
+      if (mainView) mainView.style.display = cleanerCands.length ? 'block' : 'none';
+      if (emptyView) emptyView.style.display = cleanerCands.length ? 'none' : 'block';
+      if (dSummView) dSummView.style.display = 'block';
+      if (actBar) actBar.style.display = cleanerCands.length ? 'block' : 'none';
+      if (btnToggle) {
+        btnToggle.classList.remove('active');
+        btnToggle.innerHTML = '<i class="ph ph-squares-four"></i> SpaceSniffer 空间透视';
+      }
+    }
+  }
+
+  function renderSnifferDrivePills() {
+    const box = document.getElementById('cleanerSnifferDrives');
+    if (!box || !cleanerDrives) return;
+    box.innerHTML = cleanerDrives.map(d =>
+      `<button type="button" class="sniffer-drv-btn" onclick="selectSnifferDrive('${d.drive}')">${d.drive[0]}: 盘</button>`
+    ).join('');
+  }
+  window.selectSnifferDrive = function(drv) {
+    const input = document.getElementById('cleanerSnifferInput');
+    if (input) input.value = drv;
+    loadSnifferTree(drv);
+  };
+
+  function runCleanerSniffer() {
+    const input = document.getElementById('cleanerSnifferInput');
+    const p = (input ? input.value : '').trim();
+    if (!p) { alert('请输入有效分析路径'); return; }
+    loadSnifferTree(p);
+  }
+
+  function snifferGoUp() {
+    if (!snifferCurrentData || !snifferCurrentData.path) return;
+    const parts = snifferCurrentData.path.replace(/[\\/]+$/, '').split(/[\\/]/);
+    if (parts.length <= 1) return;
+    parts.pop();
+    let upPath = parts.join('\\');
+    if (upPath.length === 2 && upPath[1] === ':') upPath += '\\';
+    if (!upPath) return;
+    const input = document.getElementById('cleanerSnifferInput');
+    if (input) input.value = upPath;
+    loadSnifferTree(upPath);
+  }
+
+  const snifferCache = new Map();
+
+  async function launchNativeSpaceSniffer(targetPath) {
+    let p = (targetPath || '').trim();
+    if (!p) {
+      const input = document.getElementById('cleanerSnifferInput');
+      p = input ? input.value.trim() : '';
+    }
+    if (!p) {
+      const d = (cleanerDrives && cleanerDrives.length) ? cleanerDrives[0].drive : 'F:\\';
+      p = d;
+    }
+    try {
+      const resp = await fetch('/api/cleaner/spacesniffer/native', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: p })
+      });
+      const j = await resp.json();
+      if (resp.ok && j.ok) {
+        console.log('[spacesniffer] Native launched:', j.message);
+      } else {
+        alert(j.error || j.message || '调起官方原生 SpaceSniffer 失败');
+      }
+    } catch (e) {
+      alert('调起请求异常: ' + e);
+    }
+  }
+  window.launchNativeSpaceSniffer = launchNativeSpaceSniffer;
+  window.launchNativeSnifferForSelected = function() {
+    if (snifferSelectedNode && snifferSelectedNode.path) {
+      launchNativeSpaceSniffer(snifferSelectedNode.path);
+    } else {
+      launchNativeSpaceSniffer();
+    }
+  };
+
+  async function loadSnifferTree(customPath) {
+    const input = document.getElementById('cleanerSnifferInput');
+    const p = customPath || (input ? input.value.trim() : '');
+    if (!p) return;
+    if (input) input.value = p;
+
+    // 内存极速缓存命中：0ms 瞬间切换，无任何网络等待与卡顿
+    if (snifferCache.has(p)) {
+      const cached = snifferCache.get(p);
+      snifferCurrentData = cached;
+      renderSnifferBreadcrumbs(cached);
+      renderTreemapCanvas(cached);
+      selectSnifferNode(cached);
+      return;
+    }
+
+    const depthEl = document.getElementById('cleanerSnifferDepth');
+    const minSizeEl = document.getElementById('cleanerSnifferMinSize');
+    const depth = depthEl ? parseInt(depthEl.value, 10) : 1;
+    const minSize = minSizeEl ? parseInt(minSizeEl.value, 10) : 512 * 1024;
+
+    const loader = document.getElementById('cleanerSnifferLoading');
+    if (loader) loader.style.display = 'flex';
+
+    try {
+      const resp = await fetch('/api/cleaner/spacesniffer/tree', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: p, depth: depth, min_size: minSize })
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (loader) loader.style.display = 'none';
+        if (data.error) {
+          alert('SpaceSniffer 错误: ' + data.error);
+          return;
+        }
+        snifferCache.set(p, data);
+        snifferCurrentData = data;
+        renderSnifferBreadcrumbs(data);
+        renderTreemapCanvas(data);
+        selectSnifferNode(data);
+        return;
+      } else {
+        const errJson = await resp.json().catch(() => ({}));
+        console.warn('SpaceSniffer tree API returned non-OK:', resp.status, errJson);
+        if (resp.status === 404) {
+          if (loader) loader.style.display = 'none';
+          alert('后端暂未加载 SpaceSniffer 接口 (404)。请确保已重启至最新版小宇工具箱。');
+        }
+      }
+    } catch (e) {
+      console.warn('SpaceSniffer tree API fetch error:', e);
+    }
+
+    if (loader) loader.style.display = 'none';
+    if (!cleanerCands || !cleanerCands.length) {
+      const emptyTree = {
+        name: p,
+        path: p,
+        size: 0,
+        size_h: '0 B',
+        is_dir: true,
+        category: 'general',
+        percent: 100,
+        file_count: 0,
+        children: []
+      };
+      snifferCurrentData = emptyTree;
+      renderSnifferBreadcrumbs(emptyTree);
+      renderTreemapCanvas(emptyTree);
+      selectSnifferNode(emptyTree);
+      return;
+    }
+    const fallbackTree = buildFallbackTreemap(p);
+    snifferCurrentData = fallbackTree;
+    renderSnifferBreadcrumbs(fallbackTree);
+    renderTreemapCanvas(fallbackTree);
+    selectSnifferNode(fallbackTree);
+  }
+
+  function buildFallbackTreemap(rootPath) {
+    const norm = rootPath.toLowerCase().replace(/[\\/]+$/, '');
+    const matched = cleanerCands.filter(c => (c.path || '').toLowerCase().startsWith(norm));
+    const children = matched.slice(0, 30).map(c => ({
+      name: c.path.split(/[\\/]/).pop() || c.title,
+      path: c.path,
+      size: c.size,
+      size_h: c.size_h,
+      is_dir: c.is_dir,
+      category: c.category || (c.is_project ? 'project' : 'cache'),
+      percent: 0,
+      file_count: 1
+    }));
+    const total = children.reduce((s, c) => s + c.size, 0) || 1024 * 1024;
+    children.forEach(c => c.percent = ((c.size / total) * 100).toFixed(1));
+    return {
+      name: rootPath,
+      path: rootPath,
+      size: total,
+      size_h: cleanerH(total),
+      is_dir: true,
+      category: 'general',
+      percent: 100,
+      file_count: children.length,
+      children: children
+    };
+  }
+
+  function renderSnifferBreadcrumbs(data) {
+    const wrap = document.getElementById('cleanerSnifferCrumbs');
+    if (!wrap || !data) return;
+    const parts = data.path.replace(/[\\/]+$/, '').split(/[\\/]/);
+    let accum = '';
+    const crumbs = parts.map((pt, idx) => {
+      if (idx === 0) accum = pt + '\\';
+      else accum += (accum.endsWith('\\') ? '' : '\\') + pt;
+      const isLast = idx === parts.length - 1;
+      return { name: pt || '根', path: accum, isLast: isLast };
+    });
+    wrap.innerHTML = crumbs.map(c =>
+      c.isLast
+        ? `<span class="crumb-item current">${escapeHtml(c.name)}</span>`
+        : `<span class="crumb-item" onclick="loadSnifferTree('${c.path.replace(/\\/g, '\\\\')}')">${escapeHtml(c.name)}</span><span class="crumb-sep">&gt;</span>`
+    ).join('');
+  }
+
+  function selectSnifferNode(node) {
+    snifferSelectedNode = node;
+    const nameEl = document.getElementById('csiName');
+    const tagEl = document.getElementById('csiTag');
+    const sizeEl = document.getElementById('csiSize');
+    const pctEl = document.getElementById('csiPct');
+    const pathEl = document.getElementById('csiPath');
+    const icoEl = document.getElementById('csiIco');
+
+    if (nameEl) nameEl.textContent = node.name || '未命名';
+    if (tagEl) {
+      const catMap = {
+        project: '本地工程', ai_model: 'AI模型资产', cache: '软件缓存',
+        system: '系统底层', media: '媒体影像', archive: '压缩归档', general: '常规目录'
+      };
+      tagEl.textContent = catMap[node.category] || node.category || '项目';
+    }
+    if (sizeEl) sizeEl.textContent = node.size_h || cleanerH(node.size || 0);
+    if (pctEl) pctEl.textContent = (node.percent !== undefined ? `${node.percent}%` : '');
+    if (pathEl) pathEl.textContent = node.path || '-';
+    if (icoEl) icoEl.textContent = node.is_dir ? '📁' : '📄';
+
+    const canvas = document.getElementById('cleanerTreemapCanvas');
+    if (canvas) {
+      canvas.querySelectorAll('.sniff-block').forEach(b => {
+        b.classList.toggle('selected', b.dataset.path === node.path);
+      });
+    }
+  }
+
+  function openSnifferInExplorer() {
+    if (!snifferSelectedNode || !snifferSelectedNode.path) return;
+    fetch('/api/cleaner/spacesniffer/open', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: snifferSelectedNode.path })
+    }).catch(() => {});
+  }
+
+  function renderTreemapCanvas(rootData) {
+    const container = document.getElementById('cleanerTreemapCanvas');
+    if (!container) return;
+    container.querySelectorAll('.sniff-block, .sniff-empty').forEach(el => el.remove());
+
+    const children = (rootData.children || []).filter(c => c.size > 0);
+    if (!children.length) {
+      const emp = document.createElement('div');
+      emp.className = 'sniff-empty';
+      emp.style.cssText = 'text-align:center;color:var(--tx3);padding:60px 20px;';
+      emp.textContent = '此目录下无大于收拢阈值的文件或子目录';
+      container.appendChild(emp);
+      return;
+    }
+
+    const rect = container.getBoundingClientRect();
+    const width = Math.max(rect.width, 400);
+    const height = Math.max(rect.height, 460);
+
+    const total = children.reduce((s, c) => s + c.size, 0);
+    const layoutItems = children.map(c => ({ ...c, value: c.size }));
+    const rects = computeSquarifiedTreemap(layoutItems, 0, 0, width, height, total);
+
+    rects.forEach(item => {
+      if (item.w < 8 || item.h < 8) return;
+      const div = document.createElement('div');
+      div.className = `sniff-block cat-${item.category || 'general'}`;
+      div.style.left = `${item.x}px`;
+      div.style.top = `${item.y}px`;
+      div.style.width = `${item.w}px`;
+      div.style.height = `${item.h}px`;
+      div.dataset.path = item.path;
+
+      const showFull = item.w >= 70 && item.h >= 45;
+      const showTiny = item.w >= 36 && item.h >= 24;
+
+      let inner = `
+        <div class="b-name" title="${escapeHtml(item.path)}">
+          <span>${item.is_dir ? '📁' : '📄'}</span>
+          <span>${escapeHtml(item.name)}</span>
+        </div>
+        ${showTiny ? `<div class="b-size">${escapeHtml(item.size_h)}</div>` : ''}
+        ${showFull ? `<div class="b-meta"><span>${item.percent}%</span><span>${(item.file_count || 1).toLocaleString()}项</span></div>` : ''}
+      `;
+
+      if (showFull && item.children && item.children.length > 0 && item.h >= 90) {
+        const topSubs = item.children.slice(0, 3);
+        inner += `<div class="sniff-nested-box">` + topSubs.map(s =>
+          `<div class="sniff-nested-item">${escapeHtml(s.name)} (${escapeHtml(s.size_h)})</div>`
+        ).join('') + `</div>`;
+      }
+
+      div.innerHTML = inner;
+
+      div.onclick = e => {
+        e.stopPropagation();
+        selectSnifferNode(item);
+      };
+      div.ondblclick = e => {
+        e.stopPropagation();
+        if (item.is_dir) {
+          loadSnifferTree(item.path);
+        }
+      };
+      div.oncontextmenu = e => {
+        e.preventDefault();
+        selectSnifferNode(item);
+        openSnifferInExplorer();
+      };
+
+      container.appendChild(div);
+    });
+  }
+
+  function computeSquarifiedTreemap(items, x, y, w, h, total) {
+    if (!items.length || total <= 0 || w <= 0 || h <= 0) return [];
+    const results = [];
+    let remaining = [...items];
+    let curX = x, curY = y, curW = w, curH = h;
+    let curTotal = total;
+
+    while (remaining.length > 0) {
+      const isHorizontal = curW >= curH;
+      const side = isHorizontal ? curH : curW;
+
+      let row = [remaining[0]];
+      let rowSum = remaining[0].value;
+      let bestWorst = worstAspect(row, rowSum, side, curTotal, isHorizontal ? curW : curH);
+
+      let i = 1;
+      while (i < remaining.length) {
+        const nextItem = remaining[i];
+        const nextSum = rowSum + nextItem.value;
+        const nextWorst = worstAspect([...row, nextItem], nextSum, side, curTotal, isHorizontal ? curW : curH);
+        if (nextWorst <= bestWorst) {
+          row.push(nextItem);
+          rowSum = nextSum;
+          bestWorst = nextWorst;
+          i++;
+        } else {
+          break;
+        }
+      }
+
+      const rowThickness = curTotal > 0 ? ((rowSum / curTotal) * (isHorizontal ? curW : curH)) : 0;
+      let offset = 0;
+
+      row.forEach(item => {
+        const itemLen = rowSum > 0 ? ((item.value / rowSum) * side) : 0;
+        if (isHorizontal) {
+          results.push({
+            ...item,
+            x: Math.round(curX),
+            y: Math.round(curY + offset),
+            w: Math.max(0, Math.round(rowThickness) - 1),
+            h: Math.max(0, Math.round(itemLen) - 1)
+          });
+        } else {
+          results.push({
+            ...item,
+            x: Math.round(curX + offset),
+            y: Math.round(curY),
+            w: Math.max(0, Math.round(itemLen) - 1),
+            h: Math.max(0, Math.round(rowThickness) - 1)
+          });
+        }
+        offset += itemLen;
+      });
+
+      if (isHorizontal) {
+        curX += rowThickness;
+        curW -= rowThickness;
+      } else {
+        curY += rowThickness;
+        curH -= rowThickness;
+      }
+      curTotal -= rowSum;
+      remaining = remaining.slice(row.length);
+    }
+
+    return results;
+  }
+
+  function worstAspect(row, sum, side, total, length) {
+    if (sum === 0 || side === 0) return Infinity;
+    const rowLen = (sum / total) * length;
+    if (rowLen === 0) return Infinity;
+    let maxAspect = 0;
+    for (const item of row) {
+      const itemLen = (item.value / sum) * side;
+      if (itemLen === 0) continue;
+      const aspect = Math.max(rowLen / itemLen, itemLen / rowLen);
+      if (aspect > maxAspect) maxAspect = aspect;
+    }
+    return maxAspect;
+  }
+
+  window.addEventListener('resize', () => {
+    if (snifferActive && snifferCurrentData) {
+      renderTreemapCanvas(snifferCurrentData);
+    }
+  });
+
   const ROUTES = [
     '#/dashboard', '#/ai', '#/news', '#/rankings', '#/compare',
     '#/agent/codex',
@@ -11820,7 +12914,8 @@
   const MODULE_DEFAULT_INSTALLED = [
     'ai-briefing', 'ai-news', 'ai-rankings', 'ai-compare', 'translate', 'cleaner',
     'agent-codex',
-    'agent-antigravity'
+    'agent-antigravity',
+    'games', 'nodes', 'clipboard'
   ];
   const MODULE_LS_KEY = 'xyModulesInstalled';
   let moduleInstalledList = null; // null = 尚未从任何来源载入，按默认集处理

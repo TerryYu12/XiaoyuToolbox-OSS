@@ -8,6 +8,12 @@ import os
 import sys
 import time
 
+# 防御性修复：清理指向已失效临时目录的残存 TCL/TK 环境变量
+for _lib_var in ('TCL_LIBRARY', 'TK_LIBRARY'):
+    _val = os.environ.get(_lib_var)
+    if _val and not os.path.isdir(_val):
+        os.environ.pop(_lib_var, None)
+
 # [2026-10-04] 单例保护:8790 已有监听即静默退出——防 guard 与开机自启竞态产生
 # 无端口僵尸实例(10-03 起实测双实例,僵尸不退出不占端口纯占内存)。
 def _already_running():

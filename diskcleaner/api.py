@@ -24,6 +24,8 @@ from .scanner import scan, targeted_scan, top_dirs, human
 from .analyzer import analyze, summarize
 from .cleaner import clean, recycle_bin_size, empty_recycle_bin
 from .rules import ALL_RULES, CATEGORY_NAMES, RISK_NAMES
+from .spacesniffer import get_spacesniffer_tree, reveal_in_explorer, launch_native_spacesniffer
+from .ai_report import build_ai_decision_report, save_ai_report_to_disk
 from . import perm
 
 LOG_DIR = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")),
@@ -301,6 +303,40 @@ def _dispatch_get(path: str) -> tuple:
             rep = STATE["last_report"]
         return True, 200, rep or {"error": "尚无清理报告"}
 
+    if path in ("/api/spacesniffer/tree", "/api/cleaner/spacesniffer/tree"):
+        with LOCK:
+            t_path = STATE["roots"][0] if STATE.get("roots") else "F:\\AI-hub\\workroom"
+        if not os.path.exists(t_path):
+            t_path = os.environ.get("SystemDrive", "C:") + "\\"
+        try:
+            tree_data = get_spacesniffer_tree(t_path, max_depth=1, min_size=512 * 1024)
+            return True, 200, tree_data
+        except Exception as ex:
+            return True, 500, {"error": f"SpaceSniffer 分析失败: {ex}"}
+
+    if path in ("/api/spacesniffer/native", "/api/cleaner/spacesniffer/native"):
+        t_path = (query.get("path") or [""])[0]
+        if not t_path:
+            with LOCK:
+                t_path = STATE["roots"][0] if STATE.get("roots") else "F:\\"
+        ok, msg, pid = launch_native_spacesniffer(t_path)
+        return True, (200 if ok else 400), {"ok": ok, "message": msg, "pid": pid}
+
+    if path in ("/api/export_ai_report", "/api/cleaner/export_ai_report"):
+        with LOCK:
+            cands = list(STATE["candidates"])
+            roots = list(STATE["roots"])
+            drives = list(STATE["drive_meta"])
+        md = build_ai_decision_report(cands, roots, drives, is_admin=perm.is_admin())
+        fpath = save_ai_report_to_disk(md)
+        return True, 200, {
+            "ok": True,
+            "markdown": md,
+            "filepath": fpath,
+            "filename": os.path.basename(fpath),
+            "cand_count": len(cands),
+        }
+
     return False, 200, {}
 
 
@@ -394,5 +430,50 @@ def _dispatch_post(path: str, body: dict) -> tuple:
         from .winapp2 import download_winapp2
         ok, msg = download_winapp2()
         return True, (200 if ok else 500), {"ok": ok, "message": msg}
+
+    if path in ("/api/spacesniffer/tree", "/api/cleaner/spacesniffer/tree"):
+        t_path = body.get("path")
+        if not t_path:
+            with LOCK:
+                t_path = STATE["roots"][0] if STATE.get("roots") else "F:\\AI-hub\\workroom"
+            if not os.path.exists(t_path):
+                t_path = os.environ.get("SystemDrive", "C:") + "\\"
+        depth = int(body.get("depth", 2))
+        min_size = int(body.get("min_size", 512 * 1024))
+        try:
+            tree_data = get_spacesniffer_tree(t_path, max_depth=depth, min_size=min_size)
+            return True, 200, tree_data
+        except Exception as ex:
+            return True, 500, {"error": f"SpaceSniffer 分析失败: {ex}"}
+
+    if path in ("/api/spacesniffer/open", "/api/cleaner/spacesniffer/open"):
+        o_path = body.get("path")
+        if not o_path:
+            return True, 400, {"error": "未提供打开路径"}
+        ok, msg = reveal_in_explorer(o_path)
+        return True, (200 if ok else 400), {"ok": ok, "message": msg}
+
+    if path in ("/api/spacesniffer/native", "/api/cleaner/spacesniffer/native"):
+        t_path = body.get("path") or ""
+        if not t_path:
+            with LOCK:
+                t_path = STATE["roots"][0] if STATE.get("roots") else "F:\\"
+        ok, msg, pid = launch_native_spacesniffer(t_path)
+        return True, (200 if ok else 400), {"ok": ok, "message": msg, "pid": pid}
+
+    if path in ("/api/export_ai_report", "/api/cleaner/export_ai_report"):
+        with LOCK:
+            cands = list(STATE["candidates"])
+            roots = list(STATE["roots"])
+            drives = list(STATE["drive_meta"])
+        md = build_ai_decision_report(cands, roots, drives, is_admin=perm.is_admin())
+        fpath = save_ai_report_to_disk(md)
+        return True, 200, {
+            "ok": True,
+            "markdown": md,
+            "filepath": fpath,
+            "filename": os.path.basename(fpath),
+            "cand_count": len(cands),
+        }
 
     return False, 200, {}

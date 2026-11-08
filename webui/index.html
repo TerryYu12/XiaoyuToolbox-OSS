@@ -264,13 +264,20 @@
               <div class="zp-card zp-budget" data-card-id="budget">
                 <div class="zp-kpi-head">
                   <span class="zp-kpi-title">预算</span>
+                  <span class="zp-chip" id="zpBudgetPricingBadge" style="margin-left:6px;font-size:10px;padding:1px 6px;cursor:pointer;opacity:0.85" title="点击设置各模型输入/输出/缓存命中价格">官方定价</span>
                   <span class="zp-flex"></span>
                   <button class="zp-budget-btn" id="zpBudgetBtn">设置预算</button>
                 </div>
                 <div id="zpBudgetForm" style="display:none;margin-top:10px;font-size:12px;color:var(--zp-ink-2)">
-                  月预算（USD）：<input type="number" min="0" step="1" class="zp-budget-input" id="zpBudgetInput" placeholder="例如 300">
-                  <button class="zp-chip coral" id="zpBudgetSave" style="margin-left:6px;cursor:pointer">保存</button>
-                  <button class="zp-chip" id="zpBudgetClear" style="margin-left:4px;cursor:pointer">清除</button>
+                  <div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px">
+                    <span>月预算（USD）：</span><input type="number" min="0" step="1" class="zp-budget-input" id="zpBudgetInput" placeholder="例如 300">
+                    <button class="zp-chip coral" id="zpBudgetSave" style="cursor:pointer">保存</button>
+                    <button class="zp-chip" id="zpBudgetClear" style="cursor:pointer">清除</button>
+                    <button class="zp-chip" id="zpBudgetPricingBtn" style="margin-left:auto;cursor:pointer" title="设置每个模型的输入、输出、缓存命中价格">⚙️ 模型单价设置</button>
+                  </div>
+                  <div style="margin-top:6px;font-size:11px;color:var(--zp-ink-3)">
+                    今日与本月花费基于模型输入/输出/缓存命中价格折算（默认官方 API 定价）。
+                  </div>
                 </div>
                 <div class="zp-budget-body">
                   <div class="zp-budget-circle" id="zpBudgetCircle">
@@ -1025,6 +1032,9 @@
               <p class="ph-desc">靶向快速扫描、多盘规则分类与安全清理。只进回收站，默认全不勾选，确认后再清理。</p>
             </div>
             <div class="ph-acts">
+              <button class="btn-ghost" id="cleanerBtnToggleSniffer" title="切换 SpaceSniffer 空间透视矩形树图"><i class="ph ph-squares-four"></i>SpaceSniffer 空间透视</button>
+              <button class="btn-ghost" id="cleanerBtnLaunchNative" style="color:var(--accent-emerald, #10b981);border-color:rgba(16,185,129,0.35);" title="直接调起官方原生 SpaceSniffer (0延迟/真动态流式/多线程C++引擎)"><i class="ph ph-lightning"></i>原生 SpaceSniffer</button>
+              <button class="btn-ghost" id="cleanerBtnAiReport" title="生成并导出面向 AI 决策的 Markdown 审计报告"><i class="ph ph-robot"></i>导出 AI 决策报告</button>
               <button class="btn-ghost" id="cleanerBtnWinapp2" title="查看或更新 winapp2.ini 社区规则库"><i class="ph ph-sparkle"></i><span id="cleanerWaBadge">社区规则库</span></button>
               <button class="btn-ghost" id="cleanerBtnEmptyRb" title="彻底清空 Windows 回收站"><i class="ph ph-trash"></i>清空回收站</button>
             </div>
@@ -1038,7 +1048,12 @@
           </div>
 
           <!-- 盘符选择区域 -->
-          <div class="cleaner-drives" id="cleanerDrives"></div>
+          <div class="cleaner-drives" id="cleanerDrives">
+            <div class="cleaner-drive-loading">
+              <div class="cleaner-spinner"></div>
+              <span>正在读取本机磁盘信息...</span>
+            </div>
+          </div>
 
           <!-- 扫描配置与操作条 -->
           <div class="cleaner-toolbar">
@@ -1099,6 +1114,79 @@
           <div class="cleaner-report" id="cleanerReport">
             <h3 id="cleanerReportTitle"><i class="ph ph-check-circle"></i>清理报告</h3>
             <pre id="cleanerReportPre"></pre>
+          </div>
+
+          <!-- SpaceSniffer 空间透视交互视图 -->
+          <div id="cleanerSnifferView" style="display:none;">
+            <div class="cleaner-sniffer-toolbar">
+              <button class="btn-ghost sm" id="cleanerSnifferBack" title="返回上一级目录"><i class="ph ph-arrow-left"></i>上一级</button>
+              <div class="cleaner-sniffer-drives" id="cleanerSnifferDrives"></div>
+              <input type="text" id="cleanerSnifferInput" class="hud-input" placeholder="输入分析路径，例如 F:\AI-hub\workroom">
+              <select id="cleanerSnifferDepth" class="hud-select sm" title="扫描深度">
+                <option value="1" selected>1 层（秒开）</option>
+                <option value="2">2 层深度</option>
+                <option value="3">3 层深度</option>
+              </select>
+              <select id="cleanerSnifferMinSize" class="hud-select sm" title="最小收拢阈值">
+                <option value="102400">&ge; 100 KB</option>
+                <option value="524288" selected>&ge; 512 KB</option>
+                <option value="5242880">&ge; 5 MB</option>
+                <option value="52428800">&ge; 50 MB</option>
+              </select>
+              <button class="btn-main sm" id="cleanerSnifferAnalyze"><i class="ph ph-magnifying-glass"></i>透视分析</button>
+              <button class="btn-main sm" id="cleanerSnifferNativeLaunch" style="background:linear-gradient(135deg, #10b981, #059669);border-color:#059669;color:#fff;font-weight:600;" title="启动官方原生 SpaceSniffer (C++引擎/0延迟/真动态流式)"><i class="ph ph-lightning"></i>调起原生 SpaceSniffer</button>
+              <button class="btn-ghost sm" id="cleanerSnifferClose" title="返回清理列表"><i class="ph ph-list-dashes"></i>返回列表</button>
+            </div>
+
+            <!-- 面包屑导航 -->
+            <div class="cleaner-sniffer-crumbs" id="cleanerSnifferCrumbs"></div>
+
+            <!-- 树图画布容器 -->
+            <div class="cleaner-treemap-wrap">
+              <div class="cleaner-treemap-canvas" id="cleanerTreemapCanvas">
+                <div class="cleaner-sniffer-loading" id="cleanerSnifferLoading" style="display:none;">
+                  <div class="cleaner-spinner"></div>
+                  <span>正在多线程深度遍历与空间透视...</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 底部属性检查条 -->
+            <div class="cleaner-sniffer-inspector" id="cleanerSnifferInspector">
+              <div class="csi-head">
+                <span class="csi-ico" id="csiIco">📁</span>
+                <span class="csi-name" id="csiName">请点击上方矩形方块选择节点</span>
+                <span class="csi-tag" id="csiTag">-</span>
+                <span class="csi-size" id="csiSize">-</span>
+                <span class="csi-pct" id="csiPct">-</span>
+              </div>
+              <div class="csi-path" id="csiPath">-</div>
+              <div class="csi-acts">
+                <button type="button" class="btn-ghost sm" id="cleanerSnifferOpenNative" title="在原生 SpaceSniffer 中透视该节点" onclick="launchNativeSnifferForSelected()"><i class="ph ph-lightning"></i>在原生 SpaceSniffer 中透视</button>
+                <button class="btn-ghost sm" id="cleanerSnifferOpenExplorer"><i class="ph ph-folder-open"></i>在资源管理器中高亮定位</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- AI 决策报告弹窗 -->
+          <div class="hud-modal-overlay" id="cleanerAiModalOverlay" style="display:none;">
+            <div class="hud-modal-card cleaner-ai-card">
+              <div class="modal-header">
+                <span class="modal-title"><i class="ph ph-robot"></i> 磁盘资产与工程安全 AI 决策审计报告</span>
+                <button class="btn-close-modal" id="cleanerBtnCloseAiModal">✕</button>
+              </div>
+              <div class="modal-body cleaner-ai-body">
+                <p class="cleaner-ai-tip">
+                  专为 <b>Claude / Gemini / DeepSeek / GPT</b> 深度审计定制。已深度关联本地代码工程、源码安全声明、AI大模型权重资产与系统垃圾，一键复制 Prompt 即可发给大模型进行智能化保留与清理决策。
+                </p>
+                <div class="cleaner-ai-toolbar">
+                  <button class="btn-main sm" id="cleanerBtnCopyAiMd"><i class="ph ph-copy"></i> 复制完整 Prompt & 报告</button>
+                  <button class="btn-ghost sm" id="cleanerBtnDownloadAiMd"><i class="ph ph-download-simple"></i> 下载为 Markdown 文件</button>
+                  <span class="cleaner-ai-savehint" id="cleanerAiSaveHint"></span>
+                </div>
+                <pre class="cleaner-ai-pre" id="cleanerAiPre"></pre>
+              </div>
+            </div>
           </div>
 
           <!-- 底部浮动操作条 -->
@@ -1823,6 +1911,53 @@
       <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:8px;">
         <button class="btn-hud-secondary" id="btnCancelCiApiKeysModal">取消</button>
         <button class="btn-hud-primary" id="btnSaveCiApiKeysModal"><i class="ph ph-floppy-disk"></i> 保存并生效</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 仪表盘模型价格设置模态弹窗 ================= -->
+  <div class="hud-modal-overlay" id="zpPricingModalOverlay" style="display:none;">
+    <div class="hud-modal-card" style="width:740px;max-width:96vw;">
+      <div class="modal-header" style="display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--hair);padding-bottom:12px;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <i class="ph ph-currency-dollar" style="color:var(--zp-coral);font-size:20px;"></i>
+          <span class="modal-title" style="font-weight:700;font-size:15px;">模型价格与计费设置</span>
+        </div>
+        <button class="btn-close-modal" id="btnCloseZpPricingModal" style="background:none;border:none;color:var(--tx2);font-size:16px;cursor:pointer;">✕</button>
+      </div>
+      <div class="modal-body" style="padding:14px 0;">
+        <div style="font-size:12px;color:var(--tx2);margin-bottom:12px;line-height:1.6;">
+          可自行设置每个模型的输入、输出、缓存命中价格（单位：<strong>USD / 1M Tokens</strong>）。仪表盘预算卡与花费预估将基于此处配置自动折算，默认为各厂商官方 API 定价。
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
+          <input type="text" id="zpPricingSearchInput" class="hud-input" placeholder="🔍 搜索模型名称..." style="flex:1;min-width:140px;height:30px;font-size:12px;">
+          <button type="button" class="btn-ghost sm" id="btnZpAddCustomModel" style="height:30px;font-size:12px;cursor:pointer;"><i class="ph ph-plus"></i> 添加模型</button>
+          <button type="button" class="btn-ghost sm" id="btnZpResetPricing" style="height:30px;font-size:12px;cursor:pointer;" title="重置全部配置为官方 API 默认定价"><i class="ph ph-arrow-counter-clockwise"></i> 恢复官方默认价</button>
+        </div>
+        <div style="max-height:calc(55vh / var(--xy-zoom, 1));overflow-y:auto;border:1px solid var(--hair);border-radius:8px;">
+          <table class="zp-pricing-table" style="width:100%;border-collapse:collapse;font-size:12px;">
+            <thead>
+              <tr style="background:var(--s1);color:var(--tx2);text-align:left;border-bottom:1px solid var(--hair);">
+                <th style="padding:8px 10px;">模型名称</th>
+                <th style="padding:8px 8px;width:120px;">输入 (USD/1M)</th>
+                <th style="padding:8px 8px;width:120px;">输出 (USD/1M)</th>
+                <th style="padding:8px 8px;width:120px;">缓存命中 (USD/1M)</th>
+                <th style="padding:8px 8px;width:60px;text-align:center;">状态</th>
+                <th style="padding:8px 8px;width:50px;text-align:center;">操作</th>
+              </tr>
+            </thead>
+            <tbody id="zpPricingTableBody">
+              <!-- 动态生成模型行 -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer" style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--hair);padding-top:12px;margin-top:8px;">
+        <span id="zpPricingHintText" style="font-size:11.5px;color:var(--tx3);">修改数值后点击“保存并生效”立即刷新预算</span>
+        <div style="display:flex;gap:8px;">
+          <button type="button" class="btn-hud-secondary" id="btnCancelZpPricingModal">取消</button>
+          <button type="button" class="btn-hud-primary" id="btnSaveZpPricingModal"><i class="ph ph-floppy-disk"></i> 保存并生效</button>
+        </div>
       </div>
     </div>
   </div>

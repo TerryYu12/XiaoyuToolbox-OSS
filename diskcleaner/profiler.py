@@ -365,6 +365,80 @@ STATIC_PROFILES: Dict[str, dict] = {
         "recreate_cost": "无损。下次安装或运行时可重新下载。",
         "advice": "推荐清理。",
     },
+
+    # ---- 本地开发与代码工程 ----
+    "node-modules": {
+        "owner_app": "Node.js / 前端工程",
+        "cache_type": "第三方 npm 依赖库 (node_modules)",
+        "purpose": "存放当前前端工程依赖的全部 npm 开源包代码。通常包含数万至数十万个碎小文件。",
+        "recreate_cost": "【源码绝对安全】工程源代码（src/、package.json、git 历史等）完好无损。清理后当前工程暂时无法直接启动或打包，需在工程根目录下执行 npm install 重新拉取恢复（通常需 1~3 分钟）。",
+        "advice": "【分场景建议】① 正在频繁开发的活跃项目：坚决保留（避免重复下载依赖拖慢进度）；② 已结项、归档或长期未打开的项目：强烈建议清理（可快速释放大量空间与数万碎片小文件）。",
+    },
+    "py-venv": {
+        "owner_app": "Python 项目环境",
+        "cache_type": "虚拟环境隔离目录 (venv)",
+        "purpose": "当前 Python 项目专用的独立 Python 解释器与 pip 依赖包集合（本工具已严格校验 pyvenv.cfg，绝非代码仓库本体）。",
+        "recreate_cost": "【源码绝对安全】.py 源代码和数据文件完好不受任何影响。清理后当前项目依赖被清空，下次使用需执行 python -m venv 重建并重新 pip install -r requirements.txt。",
+        "advice": "若项目已不再运行或属于一次性实验环境，可安全清理；活跃项目建议保留以避免重新配置环境。",
+    },
+    "py-cache": {
+        "owner_app": "Python 解释器",
+        "cache_type": "字节码缓存目录 (__pycache__)",
+        "purpose": "Python 运行时预先编译好的 .pyc 字节码文件，加速模块导入速度。",
+        "recreate_cost": "完全无损。下次运行对应的 Python 脚本时，解释器会自动在后台静默重新生成。",
+        "advice": "放心清理。各目录下的 __pycache__ 不含任何人工编写的源代码，清掉毫无坏处。",
+    },
+    "pyc-files": {
+        "owner_app": "Python 解释器",
+        "cache_type": "已编译字节码 (.pyc)",
+        "purpose": "Python 编译产物单文件。",
+        "recreate_cost": "完全无损，再次运行脚本自动重新生成。",
+        "advice": "放心清理。",
+    },
+    "gradle-build": {
+        "owner_app": "Android / Gradle 构建工具",
+        "cache_type": "编译中间产物 (intermediates)",
+        "purpose": "Android Studio 或 Gradle 打包时产生的 dex 中间转换文件与编译资源。",
+        "recreate_cost": "完全无损工程源码。下次执行构建时 Gradle 会自动重新编译。",
+        "advice": "体积庞大时推荐清理。相当于执行 gradlew clean。",
+    },
+    "electron-dist-old": {
+        "owner_app": "Electron 打包产物",
+        "cache_type": "历史旧版本安装包 (.exe)",
+        "purpose": "项目打包输出目录 (dist) 下生成的历史可执行安装包（规则已自动保留最新版，仅标记过时旧版本）。",
+        "recreate_cost": "无损源码。若需要旧版本可重新执行 npm run build 打包构建。",
+        "advice": "建议确认。如果不需要分发保留该特定旧版本安装包，可清理释放空间。",
+    },
+
+    # ---- 常用软件与即时通讯 ----
+    "wechat-xweb-cache": {
+        "owner_app": "腾讯微信 (WeChat)",
+        "cache_type": "内置浏览器与小程序运行缓存 (XWeb)",
+        "purpose": "微信打开文章、视频号、网页或小程序时下载的页面静态资源与崩溃诊断日志。",
+        "recreate_cost": "【文字聊天记录与接收的文件绝对不受影响】。下次在微信中打开相同文章时重新从服务器加载。",
+        "advice": "放心清理。长期积累容易吃掉数 GB，建议清理释放 C 盘空间。",
+    },
+    "qq-nt-cache": {
+        "owner_app": "腾讯 QQ (NT架构)",
+        "cache_type": "聊天临时静态缓存与缩略图 (chattemp)",
+        "purpose": "聊天界面中展示过的表情包动态预览、历史缩略图与网页缓存。",
+        "recreate_cost": "文字记录完好保存在本地数据库中；再次滑动浏览非常久远的历史图片时会重新联网拉取。",
+        "advice": "放心清理。建议在退出 QQ 客户端后执行以防文件占用锁。",
+    },
+    "ae-cache": {
+        "owner_app": "Adobe After Effects",
+        "cache_type": "视频合成实时预览磁盘缓存",
+        "purpose": "AE 在时间轴渲染合成时预先计算好的无损视频帧缓存，用于平滑回放。",
+        "recreate_cost": "完全不影响 .aep 工程文件。下次打开 AE 进行预览回放时会自动按需重新渲染帧缓存。",
+        "advice": "强烈推荐定期清理。AE 磁盘缓存极为占地（常常占用 50~200 GB），工程交付后可立即清空。",
+    },
+    "youku-cache": {
+        "owner_app": "优酷客户端 (Youku)",
+        "cache_type": "离线 P2P 静态分片缓存 (ngdata/ngxcdn)",
+        "purpose": "优酷客户端缓存的已播放视频数据分片与加速上传节点数据。",
+        "recreate_cost": "无损个人账号信息。下次观看视频时重新在线缓冲。",
+        "advice": "放心清理。",
+    },
 }
 
 
@@ -462,15 +536,32 @@ class OriginInspector:
 
     def probe_project_owner(self, path: str) -> Optional[Tuple[str, str]]:
         """向上追溯目录归属的本地工程项目（如 node_modules / build / target 属于哪个工程）"""
-        cur = os.path.abspath(path)
-        # 往上追查最多 4 级
-        for _ in range(4):
-            cur = os.path.dirname(cur)
+        target = os.path.abspath(path)
+        cur = target
+        for step in range(5):
             if not cur or cur == os.path.dirname(cur):
                 break
             if cur in self._project_name_cache:
                 return self._project_name_cache[cur]
-            # 检查常见工程标志文件
+
+            # 1. 检查 Git 仓库标志 (.git)
+            git_path = os.path.join(cur, ".git")
+            if os.path.isdir(git_path) or os.path.isfile(git_path):
+                pname = os.path.basename(cur)
+                pkg_json = os.path.join(cur, "package.json")
+                if os.path.isfile(pkg_json):
+                    try:
+                        with open(pkg_json, "r", encoding="utf-8", errors="ignore") as f:
+                            m = re.search(r'"name"\s*:\s*"([^"]+)"', f.read()[:1000])
+                            if m:
+                                pname = m.group(1)
+                    except Exception:
+                        pass
+                res = (f"Git工程: {pname}", cur)
+                self._project_name_cache[cur] = res
+                return res
+
+            # 2. 检查前端 package.json
             pkg_json = os.path.join(cur, "package.json")
             if os.path.isfile(pkg_json):
                 try:
@@ -482,6 +573,8 @@ class OriginInspector:
                         return res
                 except Exception:
                     pass
+
+            # 3. 检查 Rust Cargo.toml
             cargo_toml = os.path.join(cur, "Cargo.toml")
             if os.path.isfile(cargo_toml):
                 try:
@@ -493,6 +586,30 @@ class OriginInspector:
                         return res
                 except Exception:
                     pass
+
+            # 4. 检查 Python pyproject.toml / setup.py
+            pyproj = os.path.join(cur, "pyproject.toml")
+            if os.path.isfile(pyproj):
+                pname = os.path.basename(cur)
+                try:
+                    with open(pyproj, "r", encoding="utf-8", errors="ignore") as f:
+                        m = re.search(r'name\s*=\s*["\']([^"\']+)["\']', f.read()[:600])
+                        if m:
+                            pname = m.group(1)
+                except Exception:
+                    pass
+                res = (f"Python 工程: {pname}", cur)
+                self._project_name_cache[cur] = res
+                return res
+
+            # 5. 检查 Go go.mod
+            go_mod = os.path.join(cur, "go.mod")
+            if os.path.isfile(go_mod):
+                res = (f"Go 工程: {os.path.basename(cur)}", cur)
+                self._project_name_cache[cur] = res
+                return res
+
+            # 6. 检查 Gradle / Maven
             settings_gradle = os.path.join(cur, "settings.gradle")
             if not os.path.exists(settings_gradle):
                 settings_gradle = os.path.join(cur, "settings.gradle.kts")
@@ -506,6 +623,8 @@ class OriginInspector:
                         return res
                 except Exception:
                     pass
+
+            cur = os.path.dirname(cur)
         return None
 
     def profile_candidate(self, cand_path: str, rule_id: str, title: str, description: str) -> FolderProfile:
@@ -693,6 +812,16 @@ def enrich_candidate(cand, inspector: Optional[OriginInspector] = None):
     cand.advice = profile.advice
     cand.insight = profile.insight
     cand.active_refs = profile.active_refs
+
+    # 智能工程归属溯源与安全标识
+    proj_info = insp.probe_project_owner(path)
+    if proj_info:
+        cand.is_project = True
+        cand.project_name = proj_info[0]
+        cand.project_root = proj_info[1]
+        cand.project_warning = f"⚠️ 该项归属于本地工程 [{proj_info[0]}] ({proj_info[1]})。代码安全，但清理后需重新拉取依赖或编译。"
+        if not cand.owner_app or cand.owner_app == "未知应用":
+            cand.owner_app = proj_info[0]
     return cand
 
 

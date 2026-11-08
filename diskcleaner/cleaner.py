@@ -51,7 +51,7 @@ _RUNTIME_RES = [
     re.compile(r"^[a-z]:/users/[^/]+/appdata/local/python(/|$)"),
     re.compile(r"^[a-z]:/users/[^/]+/\.workbuddy(/|$)"),
 ]
-# "目录根本身"拒绝（相等匹配，不影响其子项）：用户主目录、AppData 三根、
+# 目录根本身拒绝（相等匹配，不影响其子项）：用户主目录、AppData 三根、
 # 系统目录根等。防止 --paths 手滑把整个 User Profile 送走。
 _SELF_RES = [
     re.compile(r"^[a-z]:/users/[^/]+$"),
@@ -65,6 +65,53 @@ _SELF_RES = [
     re.compile(r"^[a-z]:/program files$"),
     re.compile(r"^[a-z]:/program files \(x86\)$"),
 ]
+
+# ---------- 项目工程与源码安全护栏 ----------
+_PROJECT_MANIFESTS = {
+    "package.json", "cargo.toml", "pyproject.toml", "setup.py",
+    "cmakelists.txt", "pom.xml", "build.gradle", "settings.gradle",
+    "go.mod", "solution.sln", ".git"
+}
+
+_SAFE_LEAF_DIRS = {
+    "__pycache__", ".pytest_cache", ".ruff_cache", ".mypy_cache",
+    "node_modules", ".cache", "tmp", "temp", "dist", "build",
+    "target", ".turbo", ".next", ".nuxt", "intermediates"
+}
+
+
+def is_project_protected(path: str) -> tuple[bool, str]:
+    """检查路径是否属于项目工程核心资产，防止误删整个工程或代码仓库。
+    返回 (is_protected, reason)。
+    """
+    np = path.replace("\\", "/").rstrip("/").lower()
+    base_name = os.path.basename(np)
+
+    # 1. 绝对禁止删除版本控制元数据核心 (.git / .svn / .hg)
+    if base_name in (".git", ".svn", ".hg") or "/.git/" in np or np.endswith("/.git"):
+        return True, "版本控制核心 (.git)，绝对禁止删除"
+
+    # 2. 绝对禁止删除敏感密钥与配置文件 (.env, *.pem, *.key, *.keystore)
+    if base_name.startswith(".env") or base_name.endswith((".pem", ".key", ".keystore", ".jks", ".pfx", ".secret")):
+        return True, "敏感配置文件/证书密钥，绝对禁止删除"
+
+    # 3. 如果自身是 Git 仓库根目录（含 .git 子目录），坚决禁止整目录删除！
+    if os.path.isdir(path):
+        git_dir = os.path.join(path, ".git")
+        if os.path.exists(git_dir):
+            return True, f"代码仓库根目录 ({os.path.basename(path)})，绝对禁止整目录清理"
+
+        # 4. 如果是项目工程根（含有 package.json / pyproject.toml / cargo.toml 等且不是纯粹的缓存目录）
+        if base_name not in _SAFE_LEAF_DIRS:
+            try:
+                with os.scandir(path) as it:
+                    found_manifests = [e.name for e in it if e.name.lower() in _PROJECT_MANIFESTS]
+                    if found_manifests:
+                        return True, f"项目工程核心目录 (包含 {', '.join(found_manifests[:2])})，严禁整目录删除"
+            except OSError:
+                pass
+
+    return False, ""
 
 
 def _norm_lower(p: str) -> str:
@@ -88,6 +135,10 @@ def is_protected(path: str) -> bool:
     for rx in _SELF_RES:
         if rx.match(np):
             return True
+    # 项目工程与源码安全护栏
+    prot, _ = is_project_protected(path)
+    if prot:
+        return True
     return False
 
 
@@ -492,7 +543,13 @@ def clean(candidates: list, dry_run: bool = True, use_trash: bool = True,
     with ThreadPoolExecutor(max_workers=8) as pool:
         exists_flags = list(pool.map(os.path.exists, [t[0] for t in todo]))
     for (path, size, is_dir), ex_flag in zip(todo, exists_flags):
-        # 护栏 1：受保护路径
+        # 护栏 1：受保护路径（含工程核心保护与系统保护）
+        is_proj_prot, proj_reason = is_project_protected(path)
+        if is_proj_prot:
+            report.results.append(CleanResult(path, "skipped", size, f"工程保护: {proj_reason}"))
+            report.total_skipped += 1
+            tick(1, path)
+            continue
         if is_protected(path):
             report.results.append(CleanResult(path, "skipped", size, "系统保护路径"))
             report.total_skipped += 1

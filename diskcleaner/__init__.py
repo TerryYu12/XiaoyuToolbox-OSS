@@ -10,12 +10,16 @@ from .scanner import scan, top_dirs, top_files, human, ScanResult
 from .rules import (ALL_RULES, COMMON_RULES, LOCAL_RULES, classify, Rule,
                     rules_for_drive, drive_of, expand_placeholders, rule_drive)
 from .analyzer import analyze, summarize, Candidate
-from .cleaner import clean, CleanReport, is_protected
+from .cleaner import clean, CleanReport, is_protected, is_project_protected
+from .spacesniffer import get_spacesniffer_tree, reveal_in_explorer
+from .ai_report import build_ai_decision_report, save_ai_report_to_disk
 
 __all__ = [
     "scan", "top_dirs", "top_files", "human", "ScanResult",
     "ALL_RULES", "COMMON_RULES", "LOCAL_RULES", "classify", "Rule",
     "rules_for_drive", "drive_of", "expand_placeholders", "rule_drive",
     "analyze", "summarize", "Candidate",
-    "clean", "CleanReport", "is_protected",
+    "clean", "CleanReport", "is_protected", "is_project_protected",
+    "get_spacesniffer_tree", "reveal_in_explorer",
+    "build_ai_decision_report", "save_ai_report_to_disk",
 ]

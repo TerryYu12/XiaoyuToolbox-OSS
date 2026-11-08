@@ -124,6 +124,7 @@ class Rule:
     list_children_only: bool = False   # True=目录自身不作为候选，只列其内部子项（temp/npm-cache 这类整根易被占用）
     needs_admin: bool = False          # True=需要管理员权限才能删（非管理员环境不进候选，避免整批 WinError 5）
     exclude_patterns: list = field(default_factory=list)  # glob 排除模式（winapp2 ExcludeKey 用）
+    validator: Optional[Callable[[str, bool], bool]] = None
     _re: Optional[re.Pattern] = field(default=None, repr=False)
     _exclude_res: list = field(default=None, repr=False)
     _prefix: str = field(default="", repr=False)      # 字面量前缀（快速预筛）
@@ -169,6 +170,9 @@ class Rule:
             for erx in self._exclude_res:
                 if erx.match(path):
                     return False
+        if self.validator is not None:
+            if not self.validator(path, is_dir):
+                return False
         return True
 
 
@@ -229,6 +233,25 @@ def in_protected_zone(path: str) -> bool:
     """path（原始路径）是否落在保护区内。"""
     np = norm(path)
     return any(rx.match(np) for rx in _protected_res())
+
+
+def _is_actual_venv(path: str, is_dir: bool) -> bool:
+    """确认目标必须是真实 Python 虚拟环境，严防将包含代码的同名工程误判为 venv。
+    真 venv 特征：
+    1. 包含 pyvenv.cfg 或 (Scripts/python.exe / bin/python)
+    2. 绝不包含 .git 目录（若有 .git，说明是完整 Git 代码仓库，严禁归为可清理 venv）
+    """
+    if not is_dir:
+        return False
+    try:
+        if os.path.exists(os.path.join(path, ".git")):
+            return False
+        has_cfg = os.path.isfile(os.path.join(path, "pyvenv.cfg"))
+        has_py = (os.path.isfile(os.path.join(path, "Scripts", "python.exe")) or
+                  os.path.isfile(os.path.join(path, "bin", "python")))
+        return has_cfg or has_py
+    except OSError:
+        return False
 
 
 # ============================================================
@@ -416,7 +439,8 @@ COMMON_RULES = [
     Rule("node-modules", "project", "review", "node_modules",
          "**/node_modules/**", "依赖目录，npm/pnpm install 可重建"),
     Rule("py-venv", "project", "review", "Python 虚拟环境",
-         "**/*-env/**", "*-env 命名的 venv（如 facefix-env），可重建"),
+         "**/*-env/**", "*-env 命名的 venv（严格校验 pyvenv.cfg，绝不碰 Git 仓库）",
+         validator=_is_actual_venv),
     Rule("py-cache", "project", "safe", "__pycache__",
          "**/__pycache__/**", "Python 字节码缓存"),
     Rule("pyc-files", "project", "safe", ".pyc 文件",

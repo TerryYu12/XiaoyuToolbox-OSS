@@ -46,11 +46,24 @@ class Candidate:
     advice: str = ""
     insight: str = ""
     active_refs: list = field(default_factory=list)
+    # 工程安全防误删标识
+    is_project: bool = False
+    project_name: str = ""
+    project_root: str = ""
+    project_warning: str = ""
+
+    @property
+    def size_h(self) -> str:
+        return human(self.size)
+
+    @property
+    def mtime_h(self) -> str:
+        return time.strftime("%Y-%m-%d %H:%M", time.localtime(self.mtime)) if self.mtime else ""
 
     def to_dict(self) -> dict:
         d = asdict(self)
-        d["size_h"] = human(self.size)
-        d["mtime_h"] = time.strftime("%Y-%m-%d %H:%M", time.localtime(self.mtime)) if self.mtime else ""
+        d["size_h"] = self.size_h
+        d["mtime_h"] = self.mtime_h
         d["category_name"] = CATEGORY_NAMES.get(self.category, self.category)
         d["risk_name"] = RISK_NAMES.get(self.risk, self.risk)
         return d

@@ -1239,10 +1239,15 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"ok": True, "scale": s})
 
             return self._static(p)
+        except (ConnectionError, BrokenPipeError):
+            pass
         except Exception as e:
             import traceback
             traceback.print_exc()
-            return self._json({"error": str(e)}, 500)
+            try:
+                self._json({"error": str(e)}, 500)
+            except Exception:
+                pass
 
     def do_POST(self):
         u = urlparse(self.path)
@@ -1539,10 +1544,15 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"ok": True, "scale": s, "preview": preview})
 
             return self._json({"error": "not found"}, 404)
+        except (ConnectionError, BrokenPipeError):
+            pass
         except Exception as e:
             import traceback
             traceback.print_exc()
-            return self._json({"error": f"翻译失败: {str(e)[:120]}"}, 500)
+            try:
+                self._json({"error": f"操作异常: {str(e)[:120]}"}, 500)
+            except Exception:
+                pass
 
 
 def start_in_thread():
