@@ -6,6 +6,13 @@ import os
 import sys
 import zipfile
 
+# 保证在 Windows CI (cp1252) 控制台下打印中文不报 UnicodeEncodeError
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
+
 
 def resolve_oss_root(specified=None):
     if specified and os.path.isdir(specified):
