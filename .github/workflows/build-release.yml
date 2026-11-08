@@ -1,0 +1,159 @@
+name: Build and Release (Windows)
+
+on:
+  push:
+    branches:
+      - master
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+    inputs:
+      publish_release:
+        description: '是否发布为 GitHub Release'
+        type: boolean
+        default: true
+      draft:
+        description: '是否保存为草稿 (Draft)'
+        type: boolean
+        default: false
+      prerelease:
+        description: '是否标记为预发布 (Pre-release)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build & Package (Windows x64)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Verify build environment & critical dependencies
+        shell: pwsh
+        run: |
+          $pyCmd = (Get-Command python).Source
+          $pyDir = Split-Path -Parent $pyCmd
+          Write-Host "Python executable: $pyCmd"
+          Write-Host "Python base directory: $pyDir"
+
+          if (Test-Path "$pyDir\tcl\tcl8.6") {
+            $env:TCL_LIBRARY = "$pyDir\tcl\tcl8.6"
+            $env:TK_LIBRARY = "$pyDir\tcl\tk8.6"
+            Write-Output "TCL_LIBRARY=$pyDir\tcl\tcl8.6" >> $env:GITHUB_ENV
+            Write-Output "TK_LIBRARY=$pyDir\tcl\tk8.6" >> $env:GITHUB_ENV
+            Write-Host "Configured TCL_LIBRARY & TK_LIBRARY"
+          }
+
+          python -c "import tkinter; print('tkinter: OK')"
+          python -c "import webview; print('pywebview: OK')"
+          python -c "import winrt.windows.media.ocr; print('winrt OCR: OK')"
+          python -c "import send2trash; print('send2trash: OK')"
+          python -c "import zstandard; print('zstandard: OK')"
+
+      - name: Read version
+        id: get_version
+        shell: pwsh
+        run: |
+          $ver = (Get-Content VERSION -Raw).Trim()
+          Write-Output "APP_VERSION=$ver" >> $env:GITHUB_ENV
+          Write-Host "Detected APP_VERSION: $ver"
+
+      - name: Build executable with PyInstaller
+        shell: pwsh
+        run: |
+          python -m PyInstaller --clean --noconfirm XiaoyuToolbox-OSS.spec
+
+      - name: Validate built executable
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "dist\XiaoyuToolbox-OSS.exe")) {
+            Write-Error "dist\XiaoyuToolbox-OSS.exe 未生成！"
+            exit 1
+          }
+          $item = Get-Item "dist\XiaoyuToolbox-OSS.exe"
+          $sizeMB = [math]::Round($item.Length / 1MB, 2)
+          Write-Host "产物体积: $sizeMB MB ($($item.Length) bytes)"
+          if ($item.Length -lt 35MB) {
+            Write-Error "产物体积异常过小 ($sizeMB MB)，可能缺少 hiddenimports 或 tkinter！"
+            exit 1
+          }
+
+      - name: Assemble distribution package and checksums
+        shell: pwsh
+        run: |
+          python tools/package_oss_zip.py
+
+      - name: Append job summary
+        shell: pwsh
+        run: |
+          if (Test-Path "dist\release_assets_table.md") {
+            Get-Content "dist\release_assets_table.md" >> $env:GITHUB_STEP_SUMMARY
+          }
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: XiaoyuToolbox-OSS-v${{ env.APP_VERSION }}-win-x64
+          path: |
+            dist/XiaoyuToolbox-OSS-*.zip
+            dist/XiaoyuToolbox-OSS-*.sha256
+            dist/XiaoyuToolbox-OSS.exe
+            dist/checksums.txt
+            dist/release_assets_table.md
+          if-no-files-found: error
+
+      - name: Prepare release body
+        if: ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.publish_release) }}
+        shell: pwsh
+        run: |
+          $tag = if ("${{ github.ref_type }}" -eq "tag") { "${{ github.ref_name }}" } else { "v$($env:APP_VERSION)" }
+          Write-Output "RELEASE_TAG=$tag" >> $env:GITHUB_ENV
+
+          $bodyFile = "dist\release_body.md"
+          $notes = "小宇工具箱开源版（XiaoyuToolbox-OSS）$tag 正式构建发布。`n`n"
+          if (Test-Path "dist\release_assets_table.md") {
+            $notes += (Get-Content "dist\release_assets_table.md" -Raw) + "`n`n"
+          }
+          $notes += "### 💻 运行要求`n`n- Windows 10 (19045+) / Windows 11`n- 已安装 Microsoft Edge WebView2 Runtime（系统通常已内置）`n"
+          Set-Content -Path $bodyFile -Value $notes -Encoding UTF8
+          Write-Host "Generated release body at $bodyFile"
+
+      - name: Publish GitHub Release
+        if: ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.publish_release) }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: XiaoyuToolbox-OSS ${{ env.RELEASE_TAG }}
+          body_path: dist/release_body.md
+          draft: ${{ inputs.draft || false }}
+          prerelease: ${{ inputs.prerelease || false }}
+          generate_release_notes: true
+          files: |
+            dist/XiaoyuToolbox-OSS-*.zip
+            dist/XiaoyuToolbox-OSS-*.sha256
+            dist/XiaoyuToolbox-OSS.exe
+            dist/checksums.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

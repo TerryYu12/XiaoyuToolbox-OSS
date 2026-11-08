@@ -1,5 +1,9 @@
 # 小宇工具箱开源版（XiaoyuToolbox-OSS）
 
+[![Release](https://img.shields.io/github/v/release/TerryYu12/XiaoyuToolbox-OSS?label=Release&color=blue)](https://github.com/TerryYu12/XiaoyuToolbox-OSS/releases/latest)
+[![Build & Release](https://github.com/TerryYu12/XiaoyuToolbox-OSS/actions/workflows/build-release.yml/badge.svg)](https://github.com/TerryYu12/XiaoyuToolbox-OSS/actions/workflows/build-release.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
 Windows 桌面轻量实用工具合集：划词翻译、离线 OCR、剪贴板历史、Winapp2 智能磁盘清理、Clash 节点测速与 IP 质量审计、AI 权威天梯榜单、OpenAI 与 Antigravity 桌面端账号切换管家、Epic 每周喜加一。
 
 基于 **pywebview（WebView2）原生窗口 + 本地 8790 服务 + 系统托盘常驻** 构建。全部配置与运行缓存落在本地，不向系统目录写入无用残留，绿色便携。
@@ -19,6 +23,7 @@ Windows 桌面轻量实用工具合集：划词翻译、离线 OCR、剪贴板�
 - [全局默认快捷键](#全局默认快捷键)
 - [运行环境要求](#运行环境要求)
 - [快速上手](#快速上手)
+  - [直接下载（推荐）](#直接下载推荐)
   - [从源码运行](#从源码运行)
   - [打包单文件 Exe](#打包单文件-exe)
 - [运行数据与便携性规范](#运行数据与便携性规范)
@@ -136,6 +141,14 @@ Windows 桌面轻量实用工具合集：划词翻译、离线 OCR、剪贴板�
 ---
 
 ## 快速上手
+
+### 直接下载（推荐）
+
+前往 [GitHub Releases 页面](https://github.com/TerryYu12/XiaoyuToolbox-OSS/releases/latest) 下载最新发布的绿色免安装压缩包：
+
+- 下载 `XiaoyuToolbox-OSS-v*-win-x64.zip`；
+- 解压到任意你喜欢的目录（如 `D:\Program\XiaoyuToolbox`）；
+- 双击运行 `XiaoyuToolbox-OSS.exe` 即可（无需安装任何 Python 运行库）。
 
 ### 从源码运行
 
