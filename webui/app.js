@@ -2623,54 +2623,255 @@
   // 单模型费用：Cost = (Input * Pin + Output * Pout + CacheRead * Phit) / 1,000,000
   // ============================================================
   const OFFICIAL_MODEL_PRICING = [
-    // Anthropic Claude
-    { pattern: /claude[-_]?3[-_]?7[-_]?sonnet/i, name: 'Claude 3.7 Sonnet', input: 3.0, output: 15.0, cacheHit: 0.3 },
-    { pattern: /claude[-_]?(?:3[-_]?5[-_]?)?sonnet|sonnet[-_]?5/i, name: 'Claude 3.5 Sonnet', input: 3.0, output: 15.0, cacheHit: 0.3 },
-    { pattern: /claude[-_]?(?:3[-_]?)?opus|opus[-_]?5/i, name: 'Claude 3 Opus', input: 15.0, output: 75.0, cacheHit: 1.5 },
-    { pattern: /claude[-_]?(?:3[-_]?5[-_]?)?haiku|haiku[-_]?5/i, name: 'Claude 3.5 Haiku', input: 0.8, output: 4.0, cacheHit: 0.08 },
-    
-    // OpenAI
-    { pattern: /gpt[-_]?4o[-_]?mini/i, name: 'GPT-4o Mini', input: 0.15, output: 0.60, cacheHit: 0.075 },
-    { pattern: /gpt[-_]?4o(?![_-]?mini)/i, name: 'GPT-4o', input: 2.50, output: 10.0, cacheHit: 1.25 },
-    { pattern: /o1[-_]?mini/i, name: 'o1-mini', input: 1.10, output: 4.40, cacheHit: 0.55 },
-    { pattern: /o3[-_]?mini/i, name: 'o3-mini', input: 1.10, output: 4.40, cacheHit: 0.55 },
-    { pattern: /\bo1\b/i, name: 'o1', input: 15.0, output: 60.0, cacheHit: 7.50 },
-    { pattern: /gpt[-_]?[56].*terra/i, name: 'Codex / Terra (GPT)', input: 2.50, output: 10.0, cacheHit: 1.25 },
-    { pattern: /gpt[-_]?[56].*luna/i, name: 'Luna (GPT)', input: 2.50, output: 10.0, cacheHit: 1.25 },
-    
-    // DeepSeek
-    { pattern: /deepseek.*reasoner|deepseek[-_]?r1/i, name: 'DeepSeek R1', input: 0.55, output: 2.19, cacheHit: 0.14 },
-    { pattern: /deepseek.*(?:chat|v3|v4|flash)/i, name: 'DeepSeek V3 / Flash', input: 0.14, output: 0.28, cacheHit: 0.014 },
+    // Anthropic Claude 5代
+    { pattern: /fable[-_\s.]?5[-_.]?2/i, name: 'Claude Fable 5.2', input: 8.0, output: 40.0, cacheHit: 0.8 },
+    { pattern: /(?:claude[-_\s.]?)?opus[-_\s.]?5[-_.]?5/i, name: 'Claude Opus 5.5', input: 4.0, output: 20.0, cacheHit: 0.4 },
+    { pattern: /(?:claude[-_\s.]?)?sonnet[-_\s.]?5[-_.]?5/i, name: 'Claude Sonnet 5.5', input: 2.0, output: 10.0, cacheHit: 0.2 },
+    { pattern: /(?:claude[-_\s.]?)?haiku[-_\s.]?5[-_.]?5/i, name: 'Claude Haiku 5.5', input: 0.1, output: 0.5, cacheHit: 0.01 },
 
-    // Google Gemini
+    // Anthropic Claude 3 / 3.5 / 3.7
+    { pattern: /claude[-_\s.]?3[-_.]?7[-_\s.]?sonnet/i, name: 'Claude 3.7 Sonnet', input: 3.0, output: 15.0, cacheHit: 0.3 },
+    { pattern: /claude[-_\s.]?(?:3[-_.]?5[-_\s.]?)?sonnet|sonnet[-_\s.]?3(?:\.5)?(?![.\d])/i, name: 'Claude 3.5 Sonnet', input: 3.0, output: 15.0, cacheHit: 0.3 },
+    { pattern: /claude[-_\s.]?(?:3[-_\s.]?)?opus(?![.\d])/i, name: 'Claude 3 Opus', input: 15.0, output: 75.0, cacheHit: 1.5 },
+    { pattern: /claude[-_\s.]?(?:3[-_.]?5[-_\s.]?)?haiku|haiku[-_\s.]?3(?:\.5)?(?![.\d])/i, name: 'Claude 3.5 Haiku', input: 0.8, output: 4.0, cacheHit: 0.08 },
+
+    // Google Gemini 4代 / 3.8代
+    { pattern: /gemini[-_\s.]?4[-_\s.]?argon|m669|m41[7-9]|m421/i, name: 'Gemini 4 Argon', input: 2.0, output: 10.0, cacheHit: 0.5 },
+    { pattern: /gemini[-_\s.]?4[-_\s.]?carbon|m670/i, name: 'Gemini 4 Carbon', input: 2.0, output: 10.0, cacheHit: 0.5 },
+    { pattern: /gemini[-_\s.]?4[-_\s.]?hydrogen|m52[5-9]|m53[01]/i, name: 'Gemini 4 Hydrogen', input: 1.5, output: 7.5, cacheHit: 0.375 },
+    { pattern: /gemini[-_\s.]?3[-_.]?8[-_\s.]?flash|m31[89]|m32[02]/i, name: 'Gemini 3.8 Flash', input: 0.75, output: 3.75, cacheHit: 0.1875 },
+    { pattern: /gemini[-_\s.]?3[-_.]?7[-_\s.]?flash|m29[89]|m30[01]/i, name: 'Gemini 3.7 Flash', input: 0.50, output: 2.50, cacheHit: 0.125 },
+    { pattern: /gemini[-_\s.]?3[-_.]?5[-_\s.]?flash[-_\s.]?lite/i, name: 'Gemini 3.5 Flash-Lite', input: 0.30, output: 2.50, cacheHit: 0.075 },
     { pattern: /gemini.*(?:flash|tiered)/i, name: 'Gemini Flash', input: 0.10, output: 0.40, cacheHit: 0.025 },
     { pattern: /gemini.*(?:pro|argon)/i, name: 'Gemini Pro', input: 1.25, output: 5.00, cacheHit: 0.3125 },
 
+    // OpenAI GPT-6 / GPT-5代
+    { pattern: /gpt[-_\s.]?6[-_\s.]?astra/i, name: 'GPT-6 Astra', input: 10.0, output: 50.0, cacheHit: 5.0 },
+    { pattern: /gpt[-_\s.]?6[-_.]?1[-_\s.]?sol|\bsol\b/i, name: 'GPT-6.1 Sol', input: 2.0, output: 10.0, cacheHit: 1.0 },
+    { pattern: /gpt[-_\s.]?[56](?:[-_.]?[1-9])?[-_\s.]?terra|codex.*terra/i, name: 'GPT-6.1 / 5.6 Terra', input: 1.0, output: 5.0, cacheHit: 0.5 },
+    { pattern: /gpt[-_\s.]?[56](?:[-_.]?[1-9])?[-_\s.]?luna/i, name: 'GPT-6 / 5.6 Luna', input: 0.1, output: 0.5, cacheHit: 0.05 },
+    { pattern: /gpt[-_\s.]?5[-_.]?5[-_\s.]?instant/i, name: 'GPT-5.5 Instant', input: 5.0, output: 30.0, cacheHit: 2.5 },
+    { pattern: /gpt[-_\s.]?5[-_.]?3[-_\s.]?codex/i, name: 'GPT-5.3 Codex', input: 1.75, output: 14.0, cacheHit: 0.875 },
+
+    // OpenAI GPT-4 / o系列
+    { pattern: /gpt[-_\s.]?4o[-_\s.]?mini/i, name: 'GPT-4o Mini', input: 0.15, output: 0.60, cacheHit: 0.075 },
+    { pattern: /gpt[-_\s.]?4o(?![_\s-]?mini)/i, name: 'GPT-4o', input: 2.50, output: 10.0, cacheHit: 1.25 },
+    { pattern: /o1[-_\s.]?mini/i, name: 'o1-mini', input: 1.10, output: 4.40, cacheHit: 0.55 },
+    { pattern: /o3[-_\s.]?mini/i, name: 'o3-mini', input: 1.10, output: 4.40, cacheHit: 0.55 },
+    { pattern: /\bo3\b/i, name: 'o3', input: 2.0, output: 8.0, cacheHit: 1.0 },
+    { pattern: /\bo1\b/i, name: 'o1', input: 15.0, output: 60.0, cacheHit: 7.50 },
+
+    // DeepSeek
+    { pattern: /deepseek.*v4[-_\s.]?pro/i, name: 'DeepSeek V4 Pro', input: 1.32, output: 3.96, cacheHit: 0.132 },
+    { pattern: /deepseek.*v4[-_.]?1[-_\s.]?flash/i, name: 'DeepSeek V4.1 Flash', input: 0.30, output: 1.20, cacheHit: 0.03 },
+    { pattern: /deepseek.*v4[-_\s.]?flash[-_\s.]?vision/i, name: 'DeepSeek V4 Flash Vision', input: 0.44, output: 1.32, cacheHit: 0.044 },
+    { pattern: /deepseek.*reasoner|deepseek[-_\s.]?r1/i, name: 'DeepSeek R1', input: 0.55, output: 2.19, cacheHit: 0.14 },
+    { pattern: /deepseek.*(?:chat|v3|flash)/i, name: 'DeepSeek V3 / Flash', input: 0.14, output: 0.28, cacheHit: 0.014 },
+
     // 智谱 GLM
+    { pattern: /glm[-_\s.]?5[-_.]?3[-_\s.]?flash/i, name: 'GLM-5.3-Flash', input: 0.15, output: 0.50, cacheHit: 0.075 },
+    { pattern: /glm[-_\s.]?5[-_.]?3/i, name: 'GLM-5.3', input: 1.40, output: 4.40, cacheHit: 0.70 },
     { pattern: /glm.*flash/i, name: 'GLM Flash', input: 0.06, output: 0.06, cacheHit: 0.03 },
     { pattern: /glm/i, name: 'GLM Standard', input: 1.00, output: 1.00, cacheHit: 0.50 },
 
-    // 通义千问 Qwen
+    // 通义千问 Qwen / Qoder
+    { pattern: /qwen[-_\s.]?3[-_.]?8[-_\s.]?max|qmodel_38max/i, name: 'Qwen3.8 Max', input: 2.0, output: 6.0, cacheHit: 0.50 },
+    { pattern: /qwen[-_\s.]?3[-_.]?8[-_\s.]?flash|qfmodel/i, name: 'Qwen3.8 Flash', input: 0.15, output: 0.47, cacheHit: 0.03 },
+    { pattern: /qwen[-_\s.]?3[-_.]?8[-_\s.]?27b/i, name: 'Qwen3.8 27B', input: 0.50, output: 3.00, cacheHit: 0.10 },
+    { pattern: /qwen[-_\s.]?3[-_.]?7[-_\s.]?plus/i, name: 'Qwen3.7 Plus', input: 0.40, output: 1.60, cacheHit: 0.10 },
     { pattern: /qwen.*turbo/i, name: 'Qwen Turbo', input: 0.05, output: 0.20, cacheHit: 0.01 },
     { pattern: /qwen.*plus/i, name: 'Qwen Plus', input: 0.40, output: 1.20, cacheHit: 0.10 },
     { pattern: /qwen.*max/i, name: 'Qwen Max', input: 1.60, output: 6.40, cacheHit: 0.40 },
 
-    // MiMo / MiniMax / StepFun
+    // MiMo / MiniMax
+    { pattern: /mimo[-_\s.]?v?2[-_.]?6[-_\s.]?pro/i, name: 'MiMo-V2.6-Pro', input: 0.435, output: 0.87, cacheHit: 0.0435 },
+    { pattern: /mimo[-_\s.]?v?2[-_.]?6[-_\s.]?flash/i, name: 'MiMo-V2.6-Flash', input: 0.14, output: 0.28, cacheHit: 0.014 },
+    { pattern: /minimax[-_\s.]?m?3[-_.]?1[-_\s.]?flash/i, name: 'MiniMax-M3.1-Flash', input: 0.15, output: 0.60, cacheHit: 0.03 },
+    { pattern: /minimax[-_\s.]?m?3\b/i, name: 'MiniMax-M3', input: 0.30, output: 1.20, cacheHit: 0.06 },
     { pattern: /mimo|minimax/i, name: 'MiMo / MiniMax', input: 0.15, output: 0.60, cacheHit: 0.03 },
-    { pattern: /step/i, name: 'StepFun', input: 0.10, output: 0.40, cacheHit: 0.02 }
+
+    // StepFun (阶跃星辰)
+    { pattern: /step[-_\s.]?5/i, name: 'Step 5 Preview', input: 1.0, output: 2.7, cacheHit: 0.20 },
+    { pattern: /step[-_\s.]?3[-_.]?7[-_\s.]?flash/i, name: 'Step 3.7 Flash', input: 0.10, output: 0.40, cacheHit: 0.02 },
+    { pattern: /step/i, name: 'StepFun', input: 0.10, output: 0.40, cacheHit: 0.02 },
+
+    // Kimi / Moonshot
+    { pattern: /kimi[-_\s.]?k?3[-_.]?1/i, name: 'Kimi K3.1 Pro', input: 2.0, output: 10.0, cacheHit: 0.50 },
+    { pattern: /kimi[-_\s.]?k?2[-_.]?7/i, name: 'Kimi K2.7 Code', input: 0.95, output: 4.0, cacheHit: 0.20 },
+
+    // Grok
+    { pattern: /grok[-_\s.]?4[-_.]?7/i, name: 'Grok 4.7', input: 2.0, output: 6.0, cacheHit: 0.50 }
   ];
 
   const DEFAULT_FALLBACK_PRICING = { input: 1.0, output: 3.0, cacheHit: 0.2 };
 
+  function _zpNormalizeModelKey(k) {
+    if (!k) return '';
+    return String(k)
+      .toLowerCase()
+      .replace(/^(?:anthropic|openai|google|deepseek|qwen|alibaba|meta-llama|mistralai|stepfun|minimax|xiaomi|z-ai|zcode|qdcn|qd)\//i, '')
+      .replace(/\s*\(.*?\)\s*/g, '')
+      .replace(/[^a-z0-9]/g, '');
+  }
+
+  function zpGetAutoPricing(modelName) {
+    if (!modelName) return null;
+    let autoCache = null;
+    try {
+      const raw = localStorage.getItem('zpAutoPricingCache');
+      if (raw) autoCache = JSON.parse(raw);
+    } catch (e) { }
+    if (!autoCache || !autoCache.map) return null;
+    const map = autoCache.map;
+    const rawKey = String(modelName).trim().toLowerCase();
+    if (map[rawKey]) return map[rawKey];
+    const normKey = _zpNormalizeModelKey(rawKey);
+    if (normKey && map[normKey]) return map[normKey];
+    return null;
+  }
+
+  let _zpIsFetchingPricing = false;
+
+  async function zpFetchOnlinePricing(force = false) {
+    if (_zpIsFetchingPricing) return null;
+    const now = Date.now();
+    try {
+      const existing = JSON.parse(localStorage.getItem('zpAutoPricingCache') || 'null');
+      if (!force && existing && existing.ts && (now - existing.ts < 24 * 3600 * 1000) && existing.map) {
+        return existing;
+      }
+    } catch (e) { }
+
+    _zpIsFetchingPricing = true;
+    const pricingMap = {};
+    let fetchedCount = 0;
+    let sourceName = '';
+
+    // 1. 优先抓取 OpenRouter 官方公开模型实时定价（475+ 模型，CORS 全放行）
+    try {
+      const res = await fetchWithTimeout('https://openrouter.ai/api/v1/models', 7000);
+      if (res && Array.isArray(res.data)) {
+        res.data.forEach(m => {
+          const mid = m.id || '';
+          const p = m.pricing || {};
+          const inp = Number(p.prompt || 0) * 1e6;
+          const out = Number(p.completion || 0) * 1e6;
+          let hit = Number(p.input_cache_read || 0) * 1e6;
+          if (hit <= 0 && inp > 0) {
+            const lowId = mid.toLowerCase();
+            hit = lowId.includes('anthropic') ? inp * 0.1
+                : (lowId.includes('openai') || lowId.includes('deepseek')) ? inp * 0.5
+                : inp * 0.25;
+          }
+          if (inp > 0 || out > 0) {
+            const entry = {
+              input: Number(inp.toFixed(4)),
+              output: Number(out.toFixed(4)),
+              cacheHit: Number(hit.toFixed(4)),
+              name: m.name || mid,
+              source: 'OpenRouter'
+            };
+            pricingMap[mid.toLowerCase()] = entry;
+            const normKey = _zpNormalizeModelKey(mid);
+            if (normKey) pricingMap[normKey] = entry;
+            const normName = _zpNormalizeModelKey(m.name);
+            if (normName) pricingMap[normName] = entry;
+            fetchedCount++;
+          }
+        });
+        sourceName = 'OpenRouter';
+      }
+    } catch (e) {
+      console.warn('[zpPricing] OpenRouter 在线抓取失败或超时，回退至本地 AA 权威目录:', e);
+    }
+
+    // 2. 结合 / 兜底 本地 AA 权威模型目录
+    try {
+      const catalogRes = await fetchWithTimeout('/api/ai/models?source=aa&limit=5000', 5000);
+      if (catalogRes && Array.isArray(catalogRes.items)) {
+        catalogRes.items.forEach(m => {
+          const pin = Number(m.price_in != null ? m.price_in : m.input_cost);
+          const pout = Number(m.price_out != null ? m.price_out : m.output_cost);
+          if (pin > 0 || pout > 0) {
+            const org = String(m.org || '');
+            const hit = org.includes('Anthropic') ? pin * 0.1
+                      : (org.includes('OpenAI') || org.includes('DeepSeek')) ? pin * 0.5
+                      : pin * 0.25;
+            const entry = {
+              input: Number(pin.toFixed(4)),
+              output: Number(pout.toFixed(4)),
+              cacheHit: Number(hit.toFixed(4)),
+              name: m.name || m.model,
+              source: 'Artificial Analysis'
+            };
+            const normKey = _zpNormalizeModelKey(m.name || m.model);
+            if (normKey && !pricingMap[normKey]) {
+              pricingMap[normKey] = entry;
+              fetchedCount++;
+            }
+          }
+        });
+        if (!sourceName) sourceName = 'Artificial Analysis';
+        else sourceName += ' + AA';
+      }
+    } catch (e) { }
+
+    _zpIsFetchingPricing = false;
+    if (fetchedCount > 0) {
+      const payload = {
+        ts: now,
+        count: fetchedCount,
+        source: sourceName,
+        map: pricingMap
+      };
+      try {
+        localStorage.setItem('zpAutoPricingCache', JSON.stringify(payload));
+      } catch (e) { }
+      return payload;
+    }
+    return null;
+  }
+
   function zpGetDefaultPricing(modelName) {
-    if (!modelName) return { ...DEFAULT_FALLBACK_PRICING };
+    if (!modelName) return { ...DEFAULT_FALLBACK_PRICING, source: 'default' };
     const str = String(modelName).trim();
+
+    // 1. 优先查自动抓取的在线/权威定价字典
+    const autoP = zpGetAutoPricing(str);
+    if (autoP && Number(autoP.input) >= 0 && Number(autoP.output) >= 0) {
+      return {
+        input: Number(autoP.input),
+        output: Number(autoP.output),
+        cacheHit: Number(autoP.cacheHit >= 0 ? autoP.cacheHit : (autoP.input * 0.25).toFixed(4)),
+        source: autoP.source || 'OpenRouter'
+      };
+    }
+
+    // 2. 查内置主流厂商权威定价规则表
     for (const item of OFFICIAL_MODEL_PRICING) {
       if (item.pattern.test(str)) {
-        return { input: item.input, output: item.output, cacheHit: item.cacheHit };
+        return { input: item.input, output: item.output, cacheHit: item.cacheHit, source: 'rule' };
       }
     }
-    return { ...DEFAULT_FALLBACK_PRICING };
+
+    // 3. 动态回退：若 AA 权威模型目录已载入，尝试从中匹配官方输入/输出定价
+    if (Array.isArray(state.modelCatalog) && state.modelCatalog.length > 0) {
+      const lower = str.toLowerCase();
+      const hit = state.modelCatalog.find(m => {
+        const n = String(m.name || m.model || '').toLowerCase();
+        return n === lower || n.startsWith(lower) || lower.startsWith(n);
+      });
+      if (hit && (hit.price_in != null || hit.input_cost != null)) {
+        const pin = Number(hit.price_in != null ? hit.price_in : hit.input_cost) || 0;
+        const pout = Number(hit.price_out != null ? hit.price_out : hit.output_cost) || 0;
+        const org = String(hit.org || '');
+        const cacheHit = org.includes('Anthropic') ? pin * 0.1
+                       : (org.includes('OpenAI') || org.includes('DeepSeek')) ? pin * 0.5
+                       : pin * 0.25;
+        return { input: pin, output: pout, cacheHit: Number(cacheHit.toFixed(4)), source: 'Artificial Analysis' };
+      }
+    }
+    return { ...DEFAULT_FALLBACK_PRICING, source: 'default' };
   }
 
   function zpGetCustomPricing() {
@@ -2846,11 +3047,16 @@
     const custom = zpGetCustomPricing();
     Object.keys(custom).forEach(k => { if (k) set.add(k); });
     const commonModels = [
+      'Claude Opus 5.5', 'Claude Sonnet 5.5', 'Claude Haiku 5.5', 'Claude Fable 5.2',
       'claude-3-7-sonnet', 'claude-3-5-sonnet', 'claude-3-opus', 'claude-3-5-haiku',
-      'gpt-4o', 'gpt-4o-mini', 'o1', 'o3-mini',
-      'deepseek-chat', 'deepseek-reasoner',
+      'Gemini 4 Argon', 'Gemini 4 Carbon', 'Gemini 4 Hydrogen', 'Gemini 3.8 Flash',
       'gemini-2.0-flash', 'gemini-1.5-pro',
-      'GLM-5.3-Flash', 'GLM-5.3', 'qwen-plus'
+      'GPT-6 Astra', 'GPT-6.1 Sol', 'GPT-6.1 Terra', 'GPT-6 Luna',
+      'gpt-4o', 'gpt-4o-mini', 'o1', 'o3-mini',
+      'DeepSeek V4.1 Flash', 'DeepSeek V4 Pro', 'deepseek-chat', 'deepseek-reasoner',
+      'GLM-5.3', 'GLM-5.3-Flash',
+      'Qwen3.8 Max', 'Qwen3.8 Flash', 'qwen-plus',
+      'MiMo-V2.6-Pro', 'MiMo-V2.6-Flash', 'Step 5 Preview', 'Step 3.7 Flash'
     ];
     commonModels.forEach(m => set.add(m));
     return Array.from(set).sort();
@@ -2861,13 +3067,26 @@
   function zpOpenPricingModal() {
     const overlay = zpEl('zpPricingModalOverlay');
     if (!overlay) return;
+    // 静默检查/拉取在线最新定价（空或超过24h）
+    zpFetchOnlinePricing(false).then(res => {
+      if (res && overlay && overlay.style.display !== 'none') {
+        zpRenderPricingTable(zpEl('zpPricingSearchInput')?.value || '');
+      }
+    }).catch(() => {});
+    if (!state.modelCatalog || !state.modelCatalog.length) {
+      ensureModelCatalog('aa').then(() => {
+        if (overlay && overlay.style.display !== 'none') {
+          zpRenderPricingTable(zpEl('zpPricingSearchInput')?.value || '');
+        }
+      }).catch(() => {});
+    }
     _zpPricingModalList = zpCollectKnownModels();
     zpRenderPricingTable();
     overlay.style.display = 'flex';
     const sInput = zpEl('zpPricingSearchInput');
     if (sInput) { sInput.value = ''; sInput.focus(); }
     const hint = zpEl('zpPricingHintText');
-    if (hint) { hint.textContent = '修改数值后点击“保存并生效”立即刷新预算'; hint.style.color = 'var(--tx3)'; }
+    if (hint) { hint.textContent = '修改数值后点击“保存并生效”立即刷新预算；可点上方「自动抓取定价」同步最新价格'; hint.style.color = 'var(--tx3)'; }
   }
 
   function zpClosePricingModal() {
@@ -2889,6 +3108,10 @@
     tbody.innerHTML = filtered.map(model => {
       const p = zpGetModelPrice(model);
       const isCustom = p.isCustom;
+      const isAuto = !isCustom && p.source && p.source !== 'rule' && p.source !== 'default';
+      const badgeText = isCustom ? '自定义' : (isAuto ? '官方同步' : '官方默认');
+      const badgeCls = isCustom ? 'zp-pricing-badge-custom' : (isAuto ? 'zp-pricing-badge-sync' : 'zp-pricing-badge-default');
+      const badgeTitle = isCustom ? '用户自定义价格' : (p.source ? `官方权威定价（${p.source}）` : '官方基准定价');
       return `
         <tr data-model="${escapeHtml(model)}">
           <td style="font-weight:600;color:var(--tx);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(model)}">
@@ -2904,8 +3127,8 @@
             <input type="number" step="0.001" min="0" class="zp-pricing-input" data-field="cacheHit" value="${p.cacheHit}" placeholder="0.00">
           </td>
           <td style="text-align:center;">
-            <span class="${isCustom ? 'zp-pricing-badge-custom' : 'zp-pricing-badge-default'}">
-              ${isCustom ? '自定义' : '官方默认'}
+            <span class="${badgeCls}" title="${escapeHtml(badgeTitle)}">
+              ${badgeText}
             </span>
           </td>
           <td style="text-align:center;">
@@ -3752,6 +3975,38 @@
       });
     }
 
+    const btnFetchPricing = zpEl('btnZpFetchOnlinePricing');
+    if (btnFetchPricing) {
+      btnFetchPricing.addEventListener('click', async () => {
+        const origHtml = btnFetchPricing.innerHTML;
+        btnFetchPricing.disabled = true;
+        btnFetchPricing.innerHTML = '<i class="ph ph-spinner ph-spin"></i> 正在抓取...';
+        const hint = zpEl('zpPricingHintText');
+        if (hint) {
+          hint.textContent = '正在连接官方模型库与评测源抓取最新定价…';
+          hint.style.color = 'var(--tx2)';
+        }
+        try {
+          const res = await zpFetchOnlinePricing(true);
+          btnFetchPricing.disabled = false;
+          btnFetchPricing.innerHTML = origHtml;
+          if (res && res.count > 0) {
+            zpRenderPricingTable(zpEl('zpPricingSearchInput')?.value || '');
+            if (hint) {
+              const tStr = new Date(res.ts).toLocaleTimeString('zh-CN', { hour12: false });
+              hint.innerHTML = `<span style="color:#10b981;font-weight:600;"><i class="ph ph-check-circle"></i> 已成功自动抓取 ${res.count} 个模型官方定价（来源：${escapeHtml(res.source)} · ${tStr}）</span>`;
+            }
+          } else {
+            if (hint) hint.innerHTML = '<span style="color:var(--zp-coral);">抓取未获取到新模型数据，已维持当前定价</span>';
+          }
+        } catch (err) {
+          btnFetchPricing.disabled = false;
+          btnFetchPricing.innerHTML = origHtml;
+          if (hint) hint.innerHTML = `<span style="color:var(--zp-coral);">自动抓取失败（${escapeHtml(String(err.message || err))}），已保持当前定价</span>`;
+        }
+      });
+    }
+
     const tBodyPricing = zpEl('zpPricingTableBody');
     if (tBodyPricing) {
       tBodyPricing.addEventListener('click', e => {
@@ -3767,10 +4022,11 @@
         if (inInp) inInp.value = def.input;
         if (outInp) outInp.value = def.output;
         if (hitInp) hitInp.value = def.cacheHit;
-        const badge = row.querySelector('.zp-pricing-badge-custom, .zp-pricing-badge-default');
+        const badge = row.querySelector('.zp-pricing-badge-custom, .zp-pricing-badge-default, .zp-pricing-badge-sync');
         if (badge) {
-          badge.className = 'zp-pricing-badge-default';
-          badge.textContent = '官方默认';
+          const isAuto = def.source && def.source !== 'rule' && def.source !== 'default';
+          badge.className = isAuto ? 'zp-pricing-badge-sync' : 'zp-pricing-badge-default';
+          badge.textContent = isAuto ? '官方同步' : '官方默认';
         }
       });
       tBodyPricing.addEventListener('input', e => {
@@ -3778,7 +4034,7 @@
         if (!inp) return;
         const row = inp.closest('tr');
         if (!row) return;
-        const badge = row.querySelector('.zp-pricing-badge-custom, .zp-pricing-badge-default');
+        const badge = row.querySelector('.zp-pricing-badge-custom, .zp-pricing-badge-default, .zp-pricing-badge-sync');
         if (badge) {
           badge.className = 'zp-pricing-badge-custom';
           badge.textContent = '自定义';
@@ -6167,7 +6423,7 @@
     video: 'videoCategoryBar', audio: 'audioCategoryBar',
     image: 'imageCategoryBar', multimodal: 'multimodalCategoryBar'
   };
-  state.aiCapDim = 'gdpval';           // 能力榜单当前维度（八维二级选择条）
+  state.aiCapDim = 'frontiercode';     // 能力榜单当前维度（v5 分项二级选择条）
   state.aiOpensourceOnly = false;      // 「仅看开源」筛选（只挂在带 license 标注的 aa_index / cap_* 口径）
   state.aiArenaCategory = '';
   state.aiLiveBenchCategory = 'livebench__overall';
@@ -6289,7 +6545,7 @@
   async function loadAiRankings(category = 'aa_index') {
     // 「能力榜单」是主标签栏上的一个入口，实际数据按 state.aiCapDim 落到 cap_<维度>，
     // 所以这里把入口名翻译成真实榜 id 再请求。
-    if (category === 'capability') category = 'cap_' + (state.aiCapDim || 'gdpval');
+    if (category === 'capability') category = 'cap_' + (state.aiCapDim || 'frontiercode');
     if (category === 'arena') category = state.aiArenaCategory || 'arena';
     if (category === 'livebench') category = state.aiLiveBenchCategory || 'livebench__overall';
     // 媒体主入口落到「上次看的那个细分榜」；已经不打算混用一个总榜。
@@ -6362,9 +6618,9 @@
       banner.innerHTML = `<strong>${escapeHtml(rankData.name || '')}</strong> · 基准：<code>${escapeHtml(rankData.benchmark || '')}</code> · ${escapeHtml(rankData.description || '')}${published} ${srcChip} (抓取: ${escapeHtml(rankData.updated_at || '--')})`;
     }
 
-    // 「仅看开源」：license 标注只有 aa_index / cap_* 两个能力口径带，其余榜不出开关。
+    // 「仅看开源」：license 标注只有 aa_index / aa_cyber / cap_* 能力口径带，其余榜不出开关。
     // 保留原始 rank——开源模型的价值就在于"它在全模型榜里排第几"，重排会丢掉这个信息。
-    const osEligible = category === 'aa_index' || category.startsWith('cap_');
+    const osEligible = category === 'aa_index' || category === 'aa_cyber' || category.startsWith('cap_');
     let rankItems = rankData.items || [];
     if (osEligible && state.aiOpensourceOnly) {
       rankItems = rankItems.filter(it => it.license === '开源');
@@ -6384,19 +6640,22 @@
     }
   }
 
-  // 能力榜八维二级选择条。维度表来自后端（抓取时写入模型目录），后端不可达时
-  // 用一份内置八维兜底，保证按钮永远出得来。
+  // 能力榜 v5 分项二级选择条。维度表来自后端（抓取时写入模型目录），后端不可达时
+  // 用一份内置表兜底，保证按钮永远出得来。
   const FALLBACK_CAP_DIMS = [
-    { key: 'gdpval', label: '真实世界工作任务' }, { key: 'terminal', label: '终端与编码智能体' },
+    { key: 'frontiercode', label: '仓库工程代码' }, { key: 'terminal', label: '终端编码智能体' },
+    { key: 'briefcase', label: '职场交付 (Briefcase)' }, { key: 'automation', label: '流程自动化' },
+    { key: 'gdppdf', label: 'PDF 文档实操' }, { key: 'termsci', label: '科研终端智能体' },
+    { key: 'critpt', label: '前沿科学 (CritPt v2)' }, { key: 'hle', label: '人类终极考试 (Diamond)' },
+    { key: 'omni', label: '知识准确率' }, { key: 'gdpval', label: '经典交付 (GDPval)' },
     { key: 'scicode', label: '科研编程' }, { key: 'lcr', label: '长上下文推理' },
-    { key: 'hle', label: '推理与知识' }, { key: 'gpqa', label: '科学推理' },
-    { key: 'critpt', label: '批判性推理' }, { key: 'omni', label: '知识准确率' }
+    { key: 'gpqa', label: '科学推理 (GPQA)' }
   ];
 
   function renderCapabilityDimBar(dims) {
     const bar = document.getElementById('capabilityDimBar');
     if (!bar) return;
-    const cur = state.aiCapDim || 'gdpval';
+    const cur = state.aiCapDim || 'frontiercode';
     if (bar._fp === JSON.stringify(dims) + cur) return;      // 内容没变就别重建，避免闪烁
     bar._fp = JSON.stringify(dims) + cur;
     const list = (dims && dims.length ? dims : FALLBACK_CAP_DIMS);
@@ -6451,7 +6710,8 @@
     // 2026-09-19 起排行榜为 ai_fetcher 真实抓取（live 口径，items 带 downloads
     // / pricing 字段），按新表头渲染；旧内置快照（source=snapshot）走原四分支。
     // arena / aa_index 两榜（datalearner 口径）快照与 live 字段一致，直接走 live 渲染。
-    if (category === 'arena' || category === 'aa_index' || category.startsWith('cap_')
+    if (category === 'arena' || category === 'aa_index' || category === 'aa_coding_agent'
+        || category === 'aa_cyber' || category.startsWith('cap_')
         || category.startsWith('arena__') || category.startsWith('livebench__')
         || category.startsWith('multimodal__')) {
       renderLiveRankings(category, items);
@@ -6588,10 +6848,10 @@
       el.style.display = show ? 'flex' : 'none';
     });
     // 「开源筛选」是静态条（HTML 写死、无选项注入），不走上面的 innerHTML 判定；
-    // 只随 aa_index / capability 两个主入口出现。
+    // 只随 aa_index / aa_cyber / capability 主入口出现。
     const osBar = document.getElementById('rankOpensourceBar');
     if (osBar) {
-      osBar.style.display = (main === 'aa_index' || main === 'capability') ? 'flex' : 'none';
+      osBar.style.display = (main === 'aa_index' || main === 'aa_cyber' || main === 'capability') ? 'flex' : 'none';
     }
     return main;
   }
@@ -6604,7 +6864,40 @@
     let headers = '';
     let rows = '';
 
-    if (category === 'efficiency') {
+    if (category === 'aa_coding_agent') {
+      headers = `
+        <th>排名</th><th>Agent / 模型</th><th>机构</th>
+        <th class="text-right">综合得分 (%)</th>
+        <th class="text-right">单任务均价</th>
+        <th class="text-right">平均耗时</th>
+        <th class="text-right">评测项</th>
+      `;
+      rows = items.map(item => `
+        <tr>
+          <td><span class="rank-badge-item ${item.rank <= 3 ? 'rank-' + item.rank : 'rank-other'}">${item.rank}</span></td>
+          <td><strong>${escapeHtml(item.model || '--')}</strong>${badgeHtml(escapeHtml(item.badge || ''))}</td>
+          <td>${escapeHtml(item.org || '--')}</td>
+          <td class="text-right" style="font-family:var(--font-mono); color:var(--accent-primary); font-weight:700;">${item.score}</td>
+          <td class="text-right" style="font-family:var(--font-mono);">${escapeHtml(item.cost || '--')}</td>
+          <td class="text-right" style="font-family:var(--font-mono);">${escapeHtml(item.time || '--')}</td>
+          <td class="text-right" style="font-family:var(--font-mono);">${escapeHtml(String(item.evals ?? '--'))}</td>
+        </tr>
+      `).join('');
+    } else if (category === 'aa_cyber') {
+      headers = `
+        <th>排名</th><th>模型</th><th>机构</th><th>推理模式</th>
+        <th class="text-right">Cyber Index</th>
+      `;
+      rows = items.map(item => `
+        <tr>
+          <td><span class="rank-badge-item ${item.rank <= 3 ? 'rank-' + item.rank : 'rank-other'}">${item.rank}</span></td>
+          <td><strong>${escapeHtml(item.model || '--')}</strong>${badgeHtml(escapeHtml(item.badge || ''))}</td>
+          <td>${escapeHtml(item.org || '--')}</td>
+          <td>${escapeHtml(item.thinking || '-')}</td>
+          <td class="text-right" style="font-family:var(--font-mono); color:var(--accent-primary); font-weight:700;">${item.score}</td>
+        </tr>
+      `).join('');
+    } else if (category === 'efficiency') {
       headers = `
         <th>排名</th><th>模型</th><th>提供方</th>
         <th class="text-right">输入价 / 1M</th>
@@ -6841,15 +7134,15 @@
         btn.classList.add('active');
         const rk = btn.getAttribute('data-rank');
         syncRankingsSubBars(
-          rk === 'capability' ? 'cap_' + (state.aiCapDim || 'gdpval')
+          rk === 'capability' ? 'cap_' + (state.aiCapDim || 'frontiercode')
             : (MEDIA_BAR_IDS[rk] && state.aiMediaCategories && state.aiMediaCategories[rk])
               ? state.aiMediaCategories[rk]
               : rk === 'arena' ? (state.aiArenaCategory || 'arena')
               : rk === 'livebench' ? state.aiLiveBenchCategory : rk
         );
         if (rk === 'capability') {
-          // 八维二级条只在能力榜下展开；默认停在用户上次看的维度
-          loadAiRankings('cap_' + (state.aiCapDim || 'gdpval'));
+          // 能力榜二级条只在能力榜下展开；默认停在用户上次看的维度
+          loadAiRankings('cap_' + (state.aiCapDim || 'frontiercode'));
         } else if (MEDIA_BAR_IDS[rk]) {
           loadAiRankings((state.aiMediaCategories && state.aiMediaCategories[rk]) || rk);
         } else {
@@ -6971,6 +7264,7 @@
     const names = state.compareSelection.map(m => m.name);
     state.modelCatalog = null;
     state.modelDims = null;
+    state.externalRankings = null;
     await loadAiCompare(true);
     const current = new Map((state.modelCatalog || []).map(m => [m.name, m]));
     state.compareSelection = names.map(name => current.get(name)).filter(Boolean);
@@ -7162,6 +7456,7 @@
     const input = document.getElementById('compareSearchInput');
     const box = document.getElementById('compareSuggest');
     const clearBtn = document.getElementById('btnCompareClear');
+    const top4Btn = document.getElementById('btnCompareTop4');
     const sourceSelect = document.getElementById('compareSourceSelect');
     const boardSelect = document.getElementById('compareArenaBoard');
     const refreshBtn = document.getElementById('btnCompareRefresh');
@@ -7224,6 +7519,28 @@
       clearBtn.addEventListener('click', () => {
         state.compareSelection = [];
         renderCompareViews();
+      });
+    }
+    if (top4Btn) {
+      top4Btn.addEventListener('click', async () => {
+        const list = (state.modelCatalog && state.modelCatalog.length)
+          ? state.modelCatalog
+          : await ensureModelCatalog(state.compareSource, state.modelBoard);
+        if (!list || !list.length) return;
+        const picked = [];
+        const seenSeries = new Set();
+        for (const m of list) {
+          const series = normalizeModelKey(m.name);
+          if (!series || seenSeries.has(series)) continue;
+          seenSeries.add(series);
+          picked.push(m);
+          if (picked.length >= 4) break;
+        }
+        if (picked.length) {
+          state.compareSelection = picked;
+          state.radarFocus = picked[0].name;
+          renderCompareViews();
+        }
       });
     }
   }
@@ -7366,41 +7683,58 @@
     return String(name || '').toLowerCase().split('(')[0].replace(/[^a-z0-9]/g, '');
   }
 
-  // 核心 8 维（针对 AA 数据源，将生涩的学术 Benchmark 转换为接地气的实用业务维度）
+  // 核心 8 维（针对 AA v5.0.1 数据源，按同代纯正子池自适应对齐，严禁跨代混池）
   const AA_CORE_DIMS = [
     {
       key: 'coding',
       label: '编程能力',
       english: 'Coding & Agents',
       unit: '%',
-      desc: 'Terminal-Bench 2.1 终端环境多步编码运维 / SciCode 算法编程实测（自适应对齐全球位次）',
-      getValue: m => (m.cap && m.cap.terminal != null ? m.cap.terminal : (m.cap && m.cap.scicode != null ? m.cap.scicode : null)),
+      desc: 'FrontierCode 2.0 仓库工程 / Terminal-Bench 4.0 终端运维 / SciCode（按各自子池独立对齐位次）',
+      candidates: [
+        { bench: 'FrontierCode 2.0', unit: '%', get: m => m.cap?.frontiercode },
+        { bench: 'Terminal-Bench 4.0', unit: '%', get: m => m.cap?.terminal },
+        { bench: 'SciCode', unit: '%', get: m => m.cap?.scicode }
+      ],
+      getValue: m => (m.cap?.frontiercode ?? m.cap?.terminal ?? m.cap?.scicode ?? null),
       format: v => (typeof v === 'number' && Number.isFinite(v) ? v + '%' : '--')
     },
     {
       key: 'scireason',
       label: '科学推理',
-      english: 'Sci-Reasoning (HLE/GPQA)',
+      english: 'Sci-Reasoning (v5)',
       unit: '%',
-      desc: 'HLE (人类终极考试) / GPQA 博士级科学综合推理（覆盖高难数学、物理与生化机理）',
-      getValue: m => (m.cap ? (m.cap.hle != null ? m.cap.hle : m.cap.gpqa) : null),
+      desc: 'HLE-Diamond / Terminal-Bench-Science / GPQA Diamond 博士级科学推理',
+      candidates: [
+        { bench: 'HLE-Diamond', unit: '%', get: m => m.cap?.hle },
+        { bench: 'TB-Science', unit: '%', get: m => m.cap?.termsci },
+        { bench: 'GPQA Diamond', unit: '%', get: m => m.cap?.gpqa }
+      ],
+      getValue: m => (m.cap?.hle ?? m.cap?.termsci ?? m.cap?.gpqa ?? null),
       format: v => (typeof v === 'number' && Number.isFinite(v) ? v + '%' : '--')
     },
     {
       key: 'writing',
-      label: '文案长文',
-      english: 'Writing & Context',
+      label: '文档长文',
+      english: 'Docs & Long Context',
       unit: '%',
-      desc: 'AA-LCR 长文档深度提炼、跨段落检索与创意表达',
-      getValue: m => (m.cap ? m.cap.lcr : null),
+      desc: 'AA-LCR 长文档跨段落推理 / GDP.pdf 复杂长篇 PDF 实操交付',
+      candidates: [
+        { bench: 'AA-LCR', unit: '%', get: m => m.cap?.lcr },
+        { bench: 'GDP.pdf', unit: '%', get: m => m.cap?.gdppdf }
+      ],
+      getValue: m => (m.cap?.lcr ?? m.cap?.gdppdf ?? null),
       format: v => (typeof v === 'number' && Number.isFinite(v) ? v + '%' : '--')
     },
     {
       key: 'intelligence',
       label: '综合智力',
-      english: 'General Intelligence',
+      english: 'Intelligence Index v5',
       unit: '分',
-      desc: 'AA 综合智能指数，通用脑力、规划与常识推理基准',
+      desc: 'AA Intelligence Index v5.0.1 综合智能指数（60% 私有集）',
+      candidates: [
+        { bench: 'AA v5 综合智能', unit: '', get: m => m.intelligence }
+      ],
       getValue: m => (m.intelligence != null ? m.intelligence : null),
       format: v => (typeof v === 'number' && Number.isFinite(v) ? String(v) : '--')
     },
@@ -7410,6 +7744,9 @@
       english: 'Speed (Tokens/s)',
       unit: 'T/s',
       desc: '托管 API 中位数输出吞吐，直接决定日常与 Agent 交互响应手感',
+      candidates: [
+        { bench: '吞吐速度', unit: ' T/s', get: m => m.speed }
+      ],
       getValue: m => (m.speed != null ? m.speed : null),
       format: v => (typeof v === 'number' && Number.isFinite(v) ? v + ' T/s' : '--')
     },
@@ -7419,32 +7756,56 @@
       english: 'Value Index',
       unit: '点/$',
       desc: '综合智力点数 ÷ 1M Token 综合均价（越聪明越便宜分值越高）',
+      candidates: [
+        {
+          bench: '性价比', unit: '',
+          get: m => {
+            if (typeof m.intelligence !== 'number' || !Number.isFinite(m.intelligence)) return null;
+            const pin = m.price_in, pout = m.price_out;
+            if (pin == null && pout == null) return null;
+            const avg = ((pin || 0) + (pout || 0)) / 2;
+            if (avg <= 0) return null;
+            return Math.round((m.intelligence / avg) * 10) / 10;
+          }
+        }
+      ],
       getValue: m => {
         if (m.intelligence == null) return null;
         const pin = m.price_in, pout = m.price_out;
         if (pin == null && pout == null) return null;
-        const avg = (((pin || 0) + (pout || 0)) / 2) || 0.001;
-        return Math.round((m.intelligence / avg) * 10) / 10;
+        const avg = ((pin || 0) + (pout || 0)) / 2;
+        return avg > 0 ? Math.round((m.intelligence / avg) * 10) / 10 : null;
       },
       format: v => (typeof v === 'number' && Number.isFinite(v) ? String(v) : '--')
     },
     {
       key: 'accuracy',
       label: '知识准确率',
-      english: 'Factuality (AA-Omni)',
+      english: 'AA-Omniscience v1.1',
       unit: '%',
-      desc: 'AA-Omniscience 权威全知事实准确度，防胡说八道与幻觉率',
+      desc: 'AA-Omniscience v1.1 权威事实准确度，防胡说八道与幻觉率',
+      candidates: [
+        { bench: 'AA-Omni v1.1', unit: '%', get: m => m.cap?.omni }
+      ],
       getValue: m => (m.cap ? m.cap.omni : null),
       format: v => (typeof v === 'number' && Number.isFinite(v) ? v + '%' : '--')
     },
     {
       key: 'realwork',
-      label: '实战交付',
-      english: 'Real-World (GDPval)',
+      label: '职场交付',
+      english: 'Knowledge Work (v5)',
       unit: 'Elo',
-      desc: 'GDPval 华尔街/律所/咨询真实高薪白领实操交付物盲测评级',
-      getValue: m => (m.cap ? m.cap.gdpval : null),
-      format: v => (typeof v === 'number' && Number.isFinite(v) ? String(v) : '--')
+      desc: 'AA-Briefcase 职场交付 Elo / AutomationBench / 经典 GDPval',
+      candidates: [
+        { bench: 'AA-Briefcase', unit: ' Elo', get: m => m.cap?.briefcase },
+        { bench: 'AutomationBench', unit: '%', get: m => m.cap?.automation },
+        { bench: 'GDPval', unit: ' Elo', get: m => m.cap?.gdpval }
+      ],
+      getValue: m => (m.cap?.briefcase ?? m.cap?.automation ?? m.cap?.gdpval ?? null),
+      format: (v, bench) => {
+        if (typeof v !== 'number' || !Number.isFinite(v)) return '--';
+        return bench === 'AutomationBench' ? v + '%' : String(v);
+      }
     }
   ];
 
@@ -7455,7 +7816,7 @@
     return AA_CORE_DIMS;
   }
 
-  // 综合能力维度元数据解析：支持双基准自适应、排名、百分位等级与防离群压缩
+  // 综合能力维度元数据解析：按纯正子池对齐排名、百分位等级与展示单位
   function getDimMeta(dim, model, catalog) {
     const isNum = v => typeof v === 'number' && Number.isFinite(v);
     const cat = catalog || state.modelCatalog || [];
@@ -7470,85 +7831,16 @@
     let raw = null, shown = '未测', bench = '', subpool = [];
 
     if (isAA) {
-      if (dimKey === 'coding') {
-        const hasTerm = isNum(model.cap?.terminal);
-        const hasSci = isNum(model.cap?.scicode);
-        if (hasTerm) {
-          raw = model.cap.terminal;
-          bench = 'Terminal-Bench';
-          shown = raw + '%';
-          subpool = cat.map(m => m.cap?.terminal).filter(isNum).sort((a, b) => b - a);
-        } else if (hasSci) {
-          raw = model.cap.scicode;
-          bench = 'SciCode';
-          shown = raw + '%';
-          subpool = cat.map(m => m.cap?.scicode).filter(isNum).sort((a, b) => b - a);
-        }
-      } else if (dimKey === 'scireason') {
-        const hasHle = isNum(model.cap?.hle);
-        const hasGpqa = isNum(model.cap?.gpqa);
-        if (hasHle) {
-          raw = model.cap.hle;
-          bench = 'HLE';
-          shown = raw + '%';
-          subpool = cat.map(m => m.cap?.hle).filter(isNum).sort((a, b) => b - a);
-        } else if (hasGpqa) {
-          raw = model.cap.gpqa;
-          bench = 'GPQA';
-          shown = raw + '%';
-          subpool = cat.map(m => m.cap?.gpqa).filter(isNum).sort((a, b) => b - a);
-        }
-      } else if (dimKey === 'writing') {
-        if (isNum(model.cap?.lcr)) {
-          raw = model.cap.lcr;
-          bench = 'AA-LCR';
-          shown = raw + '%';
-          subpool = cat.map(m => m.cap?.lcr).filter(isNum).sort((a, b) => b - a);
-        }
-      } else if (dimKey === 'intelligence') {
-        if (isNum(model.intelligence)) {
-          raw = model.intelligence;
-          bench = '综合智能';
-          shown = String(raw);
-          subpool = cat.map(m => m.intelligence).filter(isNum).sort((a, b) => b - a);
-        }
-      } else if (dimKey === 'speed') {
-        if (isNum(model.speed)) {
-          raw = model.speed;
-          bench = '吞吐速度';
-          shown = raw + ' T/s';
-          subpool = cat.map(m => m.speed).filter(isNum).sort((a, b) => b - a);
-        }
-      } else if (dimKey === 'value') {
-        if (isNum(model.intelligence)) {
-          const pin = model.price_in, pout = model.price_out;
-          if (pin != null || pout != null) {
-            const avg = (((pin || 0) + (pout || 0)) / 2) || 0.001;
-            raw = Math.round((model.intelligence / avg) * 10) / 10;
-            bench = '性价比';
-            shown = String(raw);
-            subpool = cat.map(m => {
-              if (!isNum(m.intelligence)) return null;
-              const p1 = m.price_in, p2 = m.price_out;
-              if (p1 == null && p2 == null) return null;
-              const a = (((p1 || 0) + (p2 || 0)) / 2) || 0.001;
-              return Math.round((m.intelligence / a) * 10) / 10;
-            }).filter(isNum).sort((a, b) => b - a);
-          }
-        }
-      } else if (dimKey === 'accuracy') {
-        if (isNum(model.cap?.omni)) {
-          raw = model.cap.omni;
-          bench = 'AA-Omni';
-          shown = raw + '%';
-          subpool = cat.map(m => m.cap?.omni).filter(isNum).sort((a, b) => b - a);
-        }
-      } else if (dimKey === 'realwork') {
-        if (isNum(model.cap?.gdpval)) {
-          raw = model.cap.gdpval;
-          bench = 'GDPval';
-          shown = String(raw);
-          subpool = cat.map(m => m.cap?.gdpval).filter(isNum).sort((a, b) => b - a);
+      const dObj = typeof dim === 'object' ? dim : AA_CORE_DIMS.find(x => x.key === dimKey);
+      const specs = (dObj && dObj.candidates) || [];
+      for (const spec of specs) {
+        const val = spec.get(model);
+        if (isNum(val)) {
+          raw = val;
+          bench = spec.bench;
+          shown = spec.unit ? `${val}${spec.unit}` : String(val);
+          subpool = cat.map(spec.get).filter(isNum).sort((a, b) => b - a);
+          break;
         }
       }
     } else {
@@ -7576,18 +7868,20 @@
     return { known: true, raw, shown, rank, total, ratio, grade, letter: grade.toUpperCase(), bench };
   }
 
-  // 异步加载外部权威榜单（Arena 盲测代码、数学、创意写作、总榜），支持后台静默预热
+  // 异步加载外部权威榜单（Arena 盲测代码/数学/创意写作/总榜、AA Cyber、LiveBench），支持静默预热
   state.externalRankings = null;
   state._extRankLoading = false;
   async function ensureExternalRankings() {
     if (state.externalRankings || state._extRankLoading) return state.externalRankings;
     state._extRankLoading = true;
-    const rankings = { coding: {}, math: {}, writing: {}, overall: {} };
+    const rankings = { coding: {}, math: {}, writing: {}, overall: {}, cyber: {}, livebench: {} };
     const cats = [
       { key: 'coding', cat: 'arena__text__coding' },
       { key: 'math', cat: 'arena__text__math' },
       { key: 'writing', cat: 'arena__text__creative_writing' },
-      { key: 'overall', cat: 'arena__text__overall' }
+      { key: 'overall', cat: 'arena__text__overall' },
+      { key: 'cyber', cat: 'aa_cyber' },
+      { key: 'livebench', cat: 'livebench__overall' }
     ];
     try {
       await Promise.all(cats.map(async ({ key, cat }) => {
@@ -7609,10 +7903,9 @@
     return state.externalRankings;
   }
 
-  // 获取模型在指定维度上的顶级外部战绩徽章（全中文专业实测翻译）
+  // 获取模型在各维度上的真实外部榜单与专项高光（100% 源自实时缓存，不写死静态假数据）
   function getModelExternalBadges(model) {
     if (!model) return {};
-    const name = String(model.name || '').toLowerCase();
     const cleanKey = normalizeModelKey(model.name);
     const badges = {
       coding: [],
@@ -7625,7 +7918,7 @@
       realwork: []
     };
 
-    // 1. 动态对齐 Arena 盲测榜单实测 (取前 30 名的高光)
+    // 1. 动态对齐 Arena 盲测 / AA 网络安全 / LiveBench 实测排名
     if (state.externalRankings) {
       const arenaCode = state.externalRankings.coding && state.externalRankings.coding[cleanKey];
       if (arenaCode && arenaCode.rank <= 30) {
@@ -7633,6 +7926,14 @@
           text: `Arena 盲测代码 第${arenaCode.rank}名`,
           color: 'gold',
           tip: `LMSYS Arena 全球人类盲测代码榜第 ${arenaCode.rank} 名 (Elo ${Math.round(arenaCode.score || 0)})`
+        });
+      }
+      const aaCyber = state.externalRankings.cyber && state.externalRankings.cyber[cleanKey];
+      if (aaCyber && aaCyber.rank <= 20) {
+        badges.coding.push({
+          text: `AA 网络攻防 第${aaCyber.rank}名`,
+          color: 'purple',
+          tip: `Artificial Analysis Cyber Index 第 ${aaCyber.rank} 名 (${aaCyber.score} 分)`
         });
       }
       const arenaMath = state.externalRankings.math && state.externalRankings.math[cleanKey];
@@ -7654,59 +7955,44 @@
       const arenaOver = state.externalRankings.overall && state.externalRankings.overall[cleanKey];
       if (arenaOver && arenaOver.rank <= 30) {
         badges.intelligence.push({
-          text: `Arena 盲测综合总榜 第${arenaOver.rank}名`,
+          text: `Arena 盲测总榜 第${arenaOver.rank}名`,
           color: 'gold',
           tip: `LMSYS Arena 全球人类偏好盲测总榜第 ${arenaOver.rank} 名 (Elo ${Math.round(arenaOver.score || 0)})`
         });
       }
+      const lbOver = state.externalRankings.livebench && state.externalRankings.livebench[cleanKey];
+      if (lbOver && lbOver.rank <= 20) {
+        badges.intelligence.push({
+          text: `LiveBench 总榜 第${lbOver.rank}名`,
+          color: 'cyan',
+          tip: `LiveBench 客观防污染基准总榜第 ${lbOver.rank} 名 (${lbOver.score} 分)`
+        });
+      }
     }
 
-    // 2. 顶级前沿权威实测 (Vals AI 经济实操、SWE-bench Verified 工业代码、AIME 全美奥数、LiveCodeBench 实时防刷题)
-    if (name.includes('claude')) {
-      if (name.includes('opus')) {
-        badges.coding.unshift({ text: 'Vals 真实工程修Bug 70.3% (全球第1)', color: 'gold', tip: 'Vals AI 实测 SWE-bench Verified 工业级代码修复历史最高战绩' });
-        badges.coding.push({ text: 'Vals 技能扩展实操 (顶尖级)', color: 'purple', tip: 'Vals AI 综合工具链与复杂 Agent 技能扩展实操评测顶尖' });
-        badges.scireason.unshift({ text: 'Vals 前沿科学发现 67.0% (前列)', color: 'cyan', tip: 'Vals AI 科学发现推导与实验室终端综合实测高分' });
-        badges.realwork.unshift({ text: 'Vals 真实经济交付 67.0% (全球第2)', color: 'purple', tip: 'Vals AI 美国经济价值加权实战总榜全球第二' });
-      } else if (name.includes('sonnet')) {
-        badges.coding.unshift({ text: 'SWE-bench 工业修Bug 68.4%', color: 'gold', tip: 'SWE-bench Verified 真实 GitHub 仓库工程 Issue 修复实测' });
-        badges.coding.push({ text: 'LiveCodeBench 实时编程 65.2%', color: 'cyan', tip: 'LiveCodeBench 防刷题实时竞技编程实测高分' });
-        badges.scireason.unshift({ text: 'Vals 前沿科学发现 65.8%', color: 'cyan', tip: 'Vals AI 科学推导与前沿机理实测指数' });
-        badges.realwork.unshift({ text: 'Vals 真实经济交付 66.5%', color: 'purple', tip: 'Vals AI 真实工作交付与高薪白领场景实战指数' });
-      } else if (name.includes('haiku') || name.includes('fable')) {
-        badges.speed.push({ text: '敏捷极速交互', color: 'cyan', tip: '超低首字延迟与轻量级极速响应' });
-      }
-    } else if (name.includes('gpt') || name.includes('o3') || name.includes('o1')) {
-      if (name.includes('astra') || name.includes('sol') || name.includes('o3')) {
-        badges.coding.unshift({ text: 'SWE-bench 工业修Bug 71.7% (全球第1)', color: 'gold', tip: 'SWE-bench Verified 真实工程修复最高战绩' });
-        badges.coding.push({ text: 'Terminal 终端运维实操 (全球第1)', color: 'purple', tip: 'Terminal-Bench 真实终端环境多步编码运维评测全球第一' });
-        badges.scireason.unshift({ text: '全美数学奥赛 AIME 87.5% (全球第1)', color: 'gold', tip: '2025 美国数学邀请赛 (AIME) 高难奥赛高分' });
-        badges.scireason.push({ text: 'Vals 前沿科学发现 65.1%', color: 'cyan', tip: 'Vals AI 科学推理指数实测' });
-        badges.realwork.unshift({ text: 'Vals 真实经济交付 63.1%', color: 'purple', tip: 'Vals AI 真实经济价值任务实战' });
-      } else if (name.includes('codex')) {
-        badges.coding.unshift({ text: 'Codex 专业代码引擎', color: 'gold', tip: '专为工业级代码生成与重构深度调优' });
-      }
-    } else if (name.includes('gemini')) {
-      if (name.includes('argon') || name.includes('pro')) {
-        badges.scireason.unshift({ text: 'Vals 前沿科学发现 68.9% (全球第1)', color: 'gold', tip: 'Vals AI 实验室科学机理与终端推演全球第一' });
-        badges.scireason.push({ text: 'GPQA 钻石级博士科学 84.0%', color: 'cyan', tip: 'GPQA Diamond 博士级无搜索硬核科学问答实测' });
-        badges.realwork.unshift({ text: 'Vals 真实经济交付 68.9% (全球第1)', color: 'purple', tip: 'Vals AI 真实经济价值高薪实战任务全球第一' });
-      } else if (name.includes('flash')) {
-        badges.speed.unshift({ text: '闪电极速推理', color: 'cyan', tip: '超高 Tokens/s 输出吞吐与超低网络延迟' });
-        badges.value.unshift({ text: '超高性价比标杆', color: 'gold', tip: '极低 Token 成本获得第一梯队通用脑力' });
-      }
-    } else if (name.includes('deepseek')) {
-      badges.scireason.unshift({ text: '全美数学奥赛 AIME 84.0% (全球第2)', color: 'gold', tip: '2025 美国数学邀请赛 (AIME) 高难奥数实测' });
-      badges.scireason.push({ text: 'MATH-500 竞赛高难数学 97.3%', color: 'cyan', tip: 'MATH-500 竞赛级数学实测接近满分' });
-      badges.coding.unshift({ text: 'SWE-bench 工业修Bug 49.2%', color: 'purple', tip: 'SWE-bench Verified 真实工程修复能力实测' });
-      badges.coding.push({ text: 'LiveCodeBench 实时编程 65.9%', color: 'cyan', tip: '实时防刷题 LeetCode 实操竞赛高分' });
-      badges.value.unshift({ text: '全球降维性价比', color: 'gold', tip: '开源极致定价 + 顶级通用推理脑力' });
-    } else if (name.includes('qwen')) {
-      if (name.includes('max') || name.includes('plus') || name.includes('coder')) {
-        badges.coding.unshift({ text: 'LiveCodeBench 实时编程 65.4%', color: 'cyan', tip: 'LiveCodeBench 竞赛级实时编程实测' });
-        badges.scireason.unshift({ text: '全美数学奥赛 AIME 80.0%', color: 'cyan', tip: '2025 AIME 高难奥数推理实测' });
-        badges.value.unshift({ text: '开源生态标杆', color: 'gold', tip: '极高生态普及度与开箱可用性' });
-      }
+    // 2. AA v5 核心细分实测 Top 5 动态高光（源自当前真实目录）
+    if ((state.compareSource === 'aa' || !state.compareSource) && Array.isArray(state.modelCatalog) && state.modelCatalog.length) {
+      const capHighlights = [
+        { dim: 'coding', key: 'frontiercode', label: 'FrontierCode 2.0', unit: '%', color: 'gold' },
+        { dim: 'coding', key: 'terminal', label: 'Terminal-Bench 4.0', unit: '%', color: 'cyan' },
+        { dim: 'scireason', key: 'critpt', label: 'CritPt v2', unit: '%', color: 'purple' },
+        { dim: 'scireason', key: 'termsci', label: 'TB-Science', unit: '%', color: 'green' },
+        { dim: 'writing', key: 'gdppdf', label: 'GDP.pdf', unit: '%', color: 'cyan' },
+        { dim: 'realwork', key: 'automation', label: 'AutomationBench', unit: '%', color: 'purple' }
+      ];
+      capHighlights.forEach(h => {
+        const val = model.cap && model.cap[h.key];
+        if (typeof val !== 'number' || !Number.isFinite(val)) return;
+        const pool = state.modelCatalog.map(m => m.cap && m.cap[h.key]).filter(v => typeof v === 'number' && Number.isFinite(v)).sort((a, b) => b - a);
+        const rk = pool.indexOf(val) + 1;
+        if (rk >= 1 && rk <= 5) {
+          badges[h.dim].unshift({
+            text: `${h.label} 第${rk}名 (${val}${h.unit})`,
+            color: h.color,
+            tip: `AA v5 ${h.label} 全网实测排名第 ${rk} / ${pool.length}`
+          });
+        }
+      });
     }
 
     return badges;
@@ -7958,19 +8244,25 @@
       return true;
     };
 
-    // 1. 各维度能力详细对照矩阵（直接标注外部顶尖战绩与实测排名）
+    // 1. 各维度能力详细对照矩阵（直接标注组内胜出、全网排名与实测高光）
     const matrixRows = dims.map(d => {
-      const rowCells = sel.map(m => {
-        const meta = getDimMeta(d, m, state.modelCatalog);
+      const metas = sel.map(m => getDimMeta(d, m, state.modelCatalog));
+      const sameBench = new Set(metas.filter(x => x.known).map(x => x.bench)).size <= 1;
+      const validNums = metas.filter(x => x.known && isNumber(x.raw)).map(x => x.raw);
+      const bestVal = (sameBench && validNums.length >= 2) ? Math.max(...validNums) : null;
+      const rowCells = sel.map((m, idx) => {
+        const meta = metas[idx];
+        const isBest = bestVal !== null && meta.known && meta.raw === bestVal;
         const mBadges = (getModelExternalBadges(m) || {})[d.key] || [];
         const badgesMarkup = mBadges.map(b =>
           `<span class="comp-ext-badge ${b.color}" title="${escapeHtml(b.tip || b.text)}">${escapeHtml(b.text)}</span>`
         ).join('');
 
-        return `<td class="comp-matrix-cell">
+        return `<td class="comp-matrix-cell${isBest ? ' comp-cell-best' : ''}">
           <div class="comp-cell-main">
             <span class="comp-cell-val${meta.known ? '' : ' cc-na'}">${escapeHtml(meta.shown)}</span>
             ${meta.rank ? `<span class="comp-cell-rank">#${meta.rank}</span>` : ''}
+            ${isBest ? '<span class="comp-cell-best-tag">领先</span>' : ''}
           </div>
           ${meta.bench ? `<span class="comp-cell-bench">${escapeHtml(meta.bench)}</span>` : ''}
           ${badgesMarkup ? `<div class="comp-badges-wrap">${badgesMarkup}</div>` : ''}
@@ -7988,8 +8280,8 @@
 
     const matrixTable = `<section class="compare-matrix-section">
       <div class="compare-matrix-head">
-        <strong>各维度实测对照与外部顶尖战绩</strong>
-        <span>核心指标逐项对照；彩色胶囊直接标注外部顶级实测认证（Vals AI / SWE-bench / LMSYS Arena 盲测）</span>
+        <strong>各维度实测对照与外部权威高光</strong>
+        <span>同基准自动标出组内领先；胶囊徽章源自实时缓存（LMArena 盲测 / AA 网络安全 / LiveBench / AA v5 Top 5）</span>
       </div>
       <div class="hud-table-wrapper comp-matrix-scroll">
         <table class="compact-table compare-matrix-table">
@@ -8020,9 +8312,13 @@
 
     const fmtPrice = (v) => '$' + (v >= 0.01 ? v.toFixed(2) : v.toFixed(3));
     const fmtCtx = (v) => (v / 1000) + 'K';
+    const fmtSec = (v) => (v >= 60 ? (v / 60).toFixed(1) + 'm' : v.toFixed(1) + 's');
     const AA_METRICS = [
       { label: '输入价 / 1M', get: m => m.price_in, better: 'min', fmt: fmtPrice },
       { label: '输出价 / 1M', get: m => m.price_out, better: 'min', fmt: fmtPrice },
+      { label: 'v5 全套评测总费', get: m => m.cost_per_task, better: 'min', fmt: fmtPrice },
+      { label: 'v5 全套评测耗时', get: m => m.time_per_task, better: 'min', fmt: fmtSec },
+      { label: '首字 / 思考延迟', get: m => m.ttft, better: 'min', fmt: fmtSec },
       { label: '上下文窗口', get: m => m.context, better: 'none', fmt: fmtCtx },
       { label: '权重属性', get: m => (m.open_weights ? '开源权重' : '闭源'), better: 'none', fmt: String },
       { label: '推理模式', get: m => (m.reasoning ? '深度思考' : '非思考'), better: 'none', fmt: String },

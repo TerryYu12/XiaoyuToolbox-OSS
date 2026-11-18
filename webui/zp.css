@@ -1791,3 +1791,12 @@ body.light .zp-pricing-table tr:hover {
   font-weight: 600;
   white-space: nowrap;
 }
+.zp-pricing-badge-sync {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(59, 130, 246, 0.15);
+  color: #3b82f6;
+  font-weight: 600;
+  white-space: nowrap;
+}

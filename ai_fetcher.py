@@ -591,6 +591,8 @@ def fetch_v2ex_hot():
 
 
 AA_MODELS_URL = "https://artificialanalysis.ai/leaderboards/models"
+AA_CODING_AGENT_URL = "https://artificialanalysis.ai/agents/coding-agents"
+AA_CYBER_INDEX_URL = "https://artificialanalysis.ai/evaluations/artificial-analysis-cyber-index"
 LMARENA_TEXT_URL = "https://lmarena.ai/leaderboard/text"
 ARENA_DATASET = "lmarena-ai/leaderboard-dataset"
 ARENA_DATASET_API = "https://datasets-server.huggingface.co"
@@ -653,26 +655,65 @@ def _dataset_api_json(url):
     raise RuntimeError("Hugging Face Dataset Viewer 请求失败")
 
 
-# AA 榜单页内嵌 rows 的分维字段（2026-09-21 实测确认，勿臆造字段名）。
-# 三个坑：
-# ① 除 scale=elo 与已百分化的字段外，原始值都是 0–1 分数，展示前要 ×100；
-# ② `omniscience` 是「准确率 − 幻觉惩罚」的带符号综合指数（实测 -59 ~ +43），
-#    **不是**准确率——知识准确率要用 `omniscienceAccuracy`，选错字段会出一屏负数；
-# ③ GDPval 的官方列名写明标度是 `(Elo-500)/2000`，换算回 Elo 才有可比性。
-# label / english 取自页面内嵌的官方 columns 字典，不自造名词。
-# fields 兼容新版内嵌 scores 字典键名与旧版顶层字段。
+# AA 榜单页内嵌 rows 的分维字段（2026-11-17 升级至 Intelligence Index v5.0.1 口径）。
+# 规约：同代基准严禁跨代混池（例如 terminalbench-4-0 与 2.1、critpt-v2-hard 与旧 critpt、
+# hle-diamond 与全量 hle 不得混排，否则老模型反超新旗舰）。
+# 四个坑：
+# ① 除 scale=elo / elo_raw 与已百分化的字段外，原始值都是 0–1 分数，展示前要 ×100；
+# ② `omniscience` 是「准确率 − 幻觉惩罚」的带符号综合指数，知识准确率要用 `omniscience-accuracy`；
+# ③ `gdpval-aa-normalized` 与 `aa-briefcase` 原始值已为 Elo（含负数/0）；只有 (0, 10] 旧标度才按 (v*2000+500) 还原；
+# ④ `aa-briefcase` 0 分就是 0 Elo（elo_raw 直接取整，不做 +500 偏移）。
 AA_CAP_DIMS = (
+    {"key": "frontiercode", "field": "frontiercode-2-0",
+     "fields": ("frontiercode-2-0",),
+     "label": "仓库工程代码", "english": "FrontierCode 2.0",
+     "scale": "percent",
+     "desc": "AA v5 私有真实开源仓库工程任务，以维护者可合并标准自动评测。"},
+    {"key": "terminal", "field": "terminalbench-4-0",
+     "fields": ("terminalbench-4-0",),
+     "label": "终端编码智能体", "english": "Terminal-Bench 4.0",
+     "scale": "percent",
+     "desc": "Terminal-Bench 4.0：在真实终端环境里完成多步编码运维任务的成功率（不与旧 2.1 混池）。"},
+    {"key": "briefcase", "field": "aa-briefcase",
+     "fields": ("aa-briefcase",),
+     "label": "职场交付 (Briefcase)", "english": "AA-Briefcase",
+     "scale": "elo_raw",
+     "desc": "AA v5 知识工作交付物盲测 Elo，衡量金融/法律/咨询复杂分析与交付能力。"},
+    {"key": "automation", "field": "automationbench-aa",
+     "fields": ("automationbench-aa",),
+     "label": "流程自动化", "english": "AutomationBench-AA",
+     "scale": "percent",
+     "desc": "AA v5 多步骤工作流与工具调用企业自动化任务完成率。"},
+    {"key": "gdppdf", "field": "gdp-pdf",
+     "fields": ("gdp-pdf",),
+     "label": "PDF 文档实操", "english": "GDP.pdf",
+     "scale": "percent",
+     "desc": "AA v5 复杂长篇 PDF 跨页核验、提炼与专业交付准确率。"},
+    {"key": "termsci", "field": "terminal-bench-science",
+     "fields": ("terminal-bench-science",),
+     "label": "科研终端智能体", "english": "Terminal-Bench-Science",
+     "scale": "percent",
+     "desc": "AA v5 终端环境下的科学计算、实验数据处理与科研代理能力。"},
+    {"key": "critpt", "field": "critpt-v2-hard",
+     "fields": ("critpt-v2-hard",),
+     "label": "前沿科学 (CritPt v2)", "english": "CritPt v2 (Hard)",
+     "scale": "percent",
+     "desc": "AA v5 启用代码工具的 CritPt v2 高难私有科学推理子集（不与旧版混池）。"},
+    {"key": "hle", "field": "hle-diamond",
+     "fields": ("hle-diamond",),
+     "label": "人类终极考试 (Diamond)", "english": "HLE-Diamond",
+     "scale": "percent",
+     "desc": "AA v5 HLE 精炼 1000 题集，推理与知识均衡（不与全量旧版混池）。"},
+    {"key": "omni", "field": "omniscienceAccuracy",
+     "fields": ("omniscience-accuracy", "omniscienceAccuracy"),
+     "label": "知识准确率", "english": "AA-Omniscience v1.1",
+     "scale": "percent",
+     "desc": "AA v5 知识问答准确率（不含幻觉惩罚项，已剔除饱和公开题）。"},
     {"key": "gdpval", "field": "gdpvalNormalized",
      "fields": ("gdpval-aa-normalized", "gdpvalNormalized"),
-     "label": "真实世界工作任务", "english": "Agentic Real-World Work Tasks",
+     "label": "经典交付 (GDPval)", "english": "GDPval-AA",
      "scale": "elo",
-     "desc": "投行/咨询/法律等真实交付物任务上的人工对照评审，页面原始标度是 "
-             "(Elo-500)/2000，此处换算回 Elo 展示。"},
-    {"key": "terminal", "field": "terminalBench21",
-     "fields": ("terminalbench-2-1", "terminalbench-hard", "terminalbench-4-0", "terminalBench21"),
-     "label": "终端与编码智能体", "english": "Agentic Coding & Terminal Use",
-     "scale": "percent",
-     "desc": "Terminal-Bench v2.1：在真实终端环境里完成多步编码运维任务的成功率。"},
+     "desc": "经典真实世界白领交付物盲测 Elo（供历史模型对照，已修复负 Elo 标度）。"},
     {"key": "scicode", "field": "scicode",
      "fields": ("scicode",),
      "label": "科研编程", "english": "SciCode",
@@ -680,29 +721,14 @@ AA_CAP_DIMS = (
      "desc": "把科研问题转成可执行代码并复现数值结果，偏科学与工程计算。"},
     {"key": "lcr", "field": "lcr",
      "fields": ("artificial-analysis-long-context-reasoning", "lcr"),
-     "label": "长上下文推理", "english": "Long Context Reasoning",
+     "label": "长上下文推理", "english": "AA-LCR",
      "scale": "percent",
      "desc": "AA-LCR：长文档中跨段落定位、聚合与推理的能力。"},
-    {"key": "hle", "field": "hle",
-     "fields": ("humanitys-last-exam", "hle-diamond", "hle"),
-     "label": "推理与知识", "english": "Reasoning & Knowledge",
-     "scale": "percent",
-     "desc": "Humanity's Last Exam：高难度跨学科专家级题目。"},
     {"key": "gpqa", "field": "gpqa",
      "fields": ("gpqa-diamond", "gpqa"),
-     "label": "科学推理", "english": "Scientific Reasoning",
+     "label": "科学推理 (GPQA)", "english": "GPQA Diamond",
      "scale": "percent",
-     "desc": "GPQA Diamond：研究生水平的生物/物理/化学题，谷歌不出的难题。"},
-    {"key": "critpt", "field": "critpt",
-     "fields": ("critpt", "critpt-v2-hard"),
-     "label": "批判性推理", "english": "CritPT",
-     "scale": "percent",
-     "desc": "对论证的前提、漏洞与反例做批判性审查的能力。"},
-    {"key": "omni", "field": "omniscienceAccuracy",
-     "fields": ("omniscience-accuracy", "omniscienceAccuracy"),
-     "label": "知识准确率", "english": "AA-Omniscience",
-     "scale": "percent",
-     "desc": "知识问答的准确率（不含幻觉惩罚项，与 AA 的综合指数口径不同）。"},
+     "desc": "GPQA Diamond：研究生水平的生物/物理/化学题。"},
 )
 
 _RSC_PUSH_RE = re.compile(r'self\.__next_f\.push\((\[1,".*?"\])\)</script>', re.S)
@@ -784,10 +810,12 @@ def _get_aa_metric(model, fields):
 
 
 def _aa_cap_value(scale, raw):
-    """AA 原始分数 → 展示值。percent：0–1 分数转百分数；elo：还原成 Elo（新版已为 Elo 时直接取整）。"""
+    """AA 原始分数 → 展示值。percent：0–1 转百分数；elo_raw：直接取整；elo：仅 (0, 10] 旧标度做 (Elo-500)/2000 还原。"""
     v = float(raw)
+    if scale == "elo_raw":
+        return round(v)
     if scale == "elo":
-        return round(v) if v > 10.0 else round(v * 2000 + 500)
+        return round(v * 2000 + 500) if 0.0 < v <= 10.0 else round(v)
     return round(v * 100, 1) if v <= 1.0 else round(v, 1)
 
 
@@ -819,7 +847,7 @@ def _capability_boards(rows, today):
                 "model": m.get("shortName") or m.get("name") or "--",
                 "org": m.get("modelCreatorName") or "--",
                 "value": _aa_cap_value(dim["scale"], val),
-                "unit": "Elo" if dim["scale"] == "elo" else "%",
+                "unit": "Elo" if dim["scale"] in ("elo", "elo_raw") else "%",
                 "license": "开源" if m.get("isOpenWeights") else "闭源",
                 "badge": "该维度第一" if i == 0 else "",
             })
@@ -852,6 +880,11 @@ def build_model_catalog(rows, today):
         speed = m.get("outputSpeed")
         if speed is None:
             speed = m.get("medianOutputTokensPerSecond")
+        ttft = m.get("timeToFirstAnswerToken")
+        if ttft is None:
+            ttft = m.get("timeToFirstToken")
+        cost_task = m.get("intelligenceIndexCostPerTask")
+        time_task = m.get("intelligenceIndexTimePerTask")
         models.append({
             "name": m.get("shortName") or m.get("name") or "--",
             "org": m.get("modelCreatorName") or "--",
@@ -866,6 +899,15 @@ def build_model_catalog(rows, today):
             "speed": (round(speed, 1)
                       if isinstance(speed, (int, float))
                       else None),
+            "ttft": (round(ttft, 2)
+                     if isinstance(ttft, (int, float))
+                     else None),
+            "cost_per_task": (round(cost_task, 2)
+                              if isinstance(cost_task, (int, float))
+                              else None),
+            "time_per_task": (round(time_task)
+                              if isinstance(time_task, (int, float))
+                              else None),
             "cap": cap,
         })
     models.sort(key=lambda r: -(r["intelligence"]
@@ -873,10 +915,98 @@ def build_model_catalog(rows, today):
     return {
         "updated_at": today,
         "dimensions": [{"key": d["key"], "label": d["label"], "english": d["english"],
-                        "unit": "Elo" if d["scale"] == "elo" else "%"}
+                        "unit": "Elo" if d["scale"] in ("elo", "elo_raw") else "%"}
                        for d in AA_CAP_DIMS],
         "models": models,
     }
+
+
+def _fmt_duration_sec(sec):
+    try:
+        v = float(sec)
+    except (TypeError, ValueError):
+        return "--"
+    if not math.isfinite(v) or v < 0:
+        return "--"
+    if v < 60:
+        return f"{round(v)}s"
+    if v < 3600:
+        return f"{v / 60:.1f}m"
+    return f"{v / 3600:.1f}h"
+
+
+def _parse_aa_coding_agent_rows(rows):
+    live = [r for r in (rows or [])
+            if isinstance(r, dict) and not r.get("isUnavailable")
+            and isinstance(r.get("indexScore"), (int, float))]
+    live.sort(key=lambda r: -float(r["indexScore"]))
+    out = []
+    for i, r in enumerate(live[:100]):
+        creator = r.get("agentCreator") if isinstance(r.get("agentCreator"), dict) else {}
+        mean = r.get("mean") if isinstance(r.get("mean"), dict) else {}
+        cost = mean.get("costUsd")
+        wall = mean.get("agentWallTimeSec")
+        out.append({
+            "rank": i + 1,
+            "model": r.get("displayLabel") or r.get("agentName") or "--",
+            "org": creator.get("name") or "--",
+            "score": round(float(r["indexScore"]) * 100, 1),
+            "cost": f"${float(cost):.2f}" if isinstance(cost, (int, float)) else "--",
+            "time": _fmt_duration_sec(wall) if isinstance(wall, (int, float)) else "--",
+            "evals": r.get("evalCount") if isinstance(r.get("evalCount"), int) else "--",
+            "badge": "编程 Agent 第一" if i == 0 else "",
+        })
+    return out
+
+
+def _parse_aa_cyber_rows(rows):
+    live = [r for r in (rows or [])
+            if isinstance(r, dict) and not r.get("deprecated")
+            and isinstance(r.get("cyberIndex"), (int, float))]
+    live.sort(key=lambda r: -float(r["cyberIndex"]))
+    out = []
+    for i, r in enumerate(live[:100]):
+        creator = r.get("creator") if isinstance(r.get("creator"), dict) else {}
+        out.append({
+            "rank": i + 1,
+            "model": r.get("shortName") or r.get("name") or "--",
+            "org": creator.get("name") or r.get("modelCreatorName") or "--",
+            "score": round(float(r["cyberIndex"]), 1),
+            "thinking": "深度思考" if r.get("isReasoning") else "-",
+            "license": "开源" if r.get("isOpenWeights") else "闭源",
+            "badge": "网络攻防第一" if i == 0 else "",
+        })
+    return out
+
+
+def _fetch_aa_extra_boards(today):
+    """抓取 AA 新增专项榜（Coding Agent Index / Cyber Index），单榜失败不影响主榜。"""
+    boards = {}
+    try:
+        agent_rows = _rsc_arrays(_rsc_stream(AA_CODING_AGENT_URL, timeout=25), "indexScore")
+        items = _parse_aa_coding_agent_rows(agent_rows)
+        if len(items) >= 5:
+            boards["aa_coding_agent"] = {
+                "name": "AA 编程 Agent 榜",
+                "benchmark": "Artificial Analysis Coding Agent Index（官方直取）",
+                "description": "端到端软件工程 Agent（Claude Code / Codex / Devin 等）真实仓库修 Bug、实现与问答综合通过率及成本耗时。",
+                "updated_at": today, "items": items, "source": "live",
+            }
+    except Exception as e:
+        print(f"[ai_fetcher] AA 编程 Agent 榜失败: {e}", flush=True)
+    try:
+        cyber_rows = _rsc_arrays(_rsc_stream(AA_CYBER_INDEX_URL, timeout=25), "cyberIndex")
+        items = _parse_aa_cyber_rows(cyber_rows)
+        if len(items) >= 5:
+            boards["aa_cyber"] = {
+                "name": "AA 网络安全榜",
+                "benchmark": "Artificial Analysis Cyber Index（官方直取）",
+                "description": "面向网络安全攻防与代码仓库漏洞发现/复现/安全修复的智能体专项评估指数。",
+                "updated_at": today, "items": items, "source": "live",
+            }
+    except Exception as e:
+        print(f"[ai_fetcher] AA 网络安全榜失败: {e}", flush=True)
+    return boards
 
 
 def _fetch_arena_direct():
@@ -1440,8 +1570,8 @@ def _fetch_existing_rankings():
             } for r in dl["arena"][:10]]
     if aa_rows:
         out["aa_index"] = {
-            "name": "AA 智能指数榜", "benchmark": "Artificial Analysis 综合评测（官方直取）",
-            "description": "第三方评测机构对知识/推理/数学等多维基准的加权综合分，反映模型硬能力（取前 100）。",
+            "name": "AA 智能指数榜", "benchmark": "Artificial Analysis Intelligence Index v5.0.1（官方直取）",
+            "description": "AA v5.0.1 综合智能指数（60% 私有集，涵盖代码/科学/知识工作/通用推理四大支柱，取前 100）。",
             "updated_at": today, "items": aa_rows, "source": "live",
         }
     if arena_rows:
@@ -1451,9 +1581,10 @@ def _fetch_existing_rankings():
             "updated_at": today, "items": arena_rows, "source": "live",
         }
 
-    # ---- 八维能力榜 + 模型对比目录（与智能指数榜同一份 AA 原始行）----
+    # ---- v5 能力分项榜 + 专项榜 + 模型对比目录（与智能指数榜同一份 AA 原始行）----
     if aa_raw:
         out.update(_capability_boards(aa_raw, today))
+    out.update(_fetch_aa_extra_boards(today))
     catalog = build_model_catalog(aa_raw, today) if aa_raw else {}
 
     return out, catalog
@@ -1463,11 +1594,12 @@ def _fetch_aa_source():
     today = time.strftime("%Y-%m-%d")
     rows = _fetch_aa_rows()
     rankings = {"aa_index": {
-        "name": "AA 智能指数榜", "benchmark": "Artificial Analysis 综合评测（官方直取）",
-        "description": "第三方评测机构对知识、推理、数学等基准的加权综合分。",
+        "name": "AA 智能指数榜", "benchmark": "Artificial Analysis Intelligence Index v5.0.1（官方直取）",
+        "description": "AA v5.0.1 综合智能指数（60% 私有集，涵盖代码/科学/知识工作/通用推理四大支柱，取前 100）。",
         "updated_at": today, "items": _fetch_aa_index(rows), "source": "live",
     }}
     rankings.update(_capability_boards(rows, today))
+    rankings.update(_fetch_aa_extra_boards(today))
     return rankings, build_model_catalog(rows, today)
 
 

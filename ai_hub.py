@@ -313,17 +313,22 @@ MULTIMODAL_OPTIONS = [
 MEDIA_PARENT_ALIASES = dict(ai_media_rankings.MEDIA_DEFAULT_BOARDS,
                             multimodal="multimodal__vision")
 
-# 模型目录缺失时的兜底维度表（八项，与 ai_fetcher.AA_CAP_DIMS 同口径；
+# 模型目录缺失时的兜底维度表（与 ai_fetcher.AA_CAP_DIMS 同口径；
 # 这里只放渲染必需的 key/label/unit，描述文案以抓取层写入的为准）
 FALLBACK_CAP_DIMS = [
-    {"key": "gdpval", "label": "真实世界工作任务", "english": "Agentic Real-World Work Tasks", "unit": "Elo"},
-    {"key": "terminal", "label": "终端与编码智能体", "english": "Agentic Coding & Terminal Use", "unit": "%"},
+    {"key": "frontiercode", "label": "仓库工程代码", "english": "FrontierCode 2.0", "unit": "%"},
+    {"key": "terminal", "label": "终端编码智能体", "english": "Terminal-Bench 4.0", "unit": "%"},
+    {"key": "briefcase", "label": "职场交付 (Briefcase)", "english": "AA-Briefcase", "unit": "Elo"},
+    {"key": "automation", "label": "流程自动化", "english": "AutomationBench-AA", "unit": "%"},
+    {"key": "gdppdf", "label": "PDF 文档实操", "english": "GDP.pdf", "unit": "%"},
+    {"key": "termsci", "label": "科研终端智能体", "english": "Terminal-Bench-Science", "unit": "%"},
+    {"key": "critpt", "label": "前沿科学 (CritPt v2)", "english": "CritPt v2 (Hard)", "unit": "%"},
+    {"key": "hle", "label": "人类终极考试 (Diamond)", "english": "HLE-Diamond", "unit": "%"},
+    {"key": "omni", "label": "知识准确率", "english": "AA-Omniscience v1.1", "unit": "%"},
+    {"key": "gdpval", "label": "经典交付 (GDPval)", "english": "GDPval-AA", "unit": "Elo"},
     {"key": "scicode", "label": "科研编程", "english": "SciCode", "unit": "%"},
-    {"key": "lcr", "label": "长上下文推理", "english": "Long Context Reasoning", "unit": "%"},
-    {"key": "hle", "label": "推理与知识", "english": "Reasoning & Knowledge", "unit": "%"},
-    {"key": "gpqa", "label": "科学推理", "english": "Scientific Reasoning", "unit": "%"},
-    {"key": "critpt", "label": "批判性推理", "english": "CritPT", "unit": "%"},
-    {"key": "omni", "label": "知识准确率", "english": "AA-Omniscience", "unit": "%"},
+    {"key": "lcr", "label": "长上下文推理", "english": "AA-LCR", "unit": "%"},
+    {"key": "gpqa", "label": "科学推理 (GPQA)", "english": "GPQA Diamond", "unit": "%"},
 ]
 
 
@@ -372,9 +377,19 @@ def load_ai_rankings(category="overall"):
             "source_categories": source_categories,
         }
     if category == "capability":
-        # 前端「能力榜单」入口的别名：直接调 API 时落到默认维度，
+        # 前端「能力榜单」入口的别名：优先落到 v5 首页维度，旧缓存回退 gdpval，
         # 而不是掉进下面的兜底逻辑静默返回开源热度总榜（牌子对不上的表比空白更坏）
-        category = "cap_gdpval"
+        category = ("cap_frontiercode" if "cap_frontiercode" in live
+                    else "cap_briefcase" if "cap_briefcase" in live
+                    else "cap_gdpval")
+    if category in ("aa_coding_agent", "aa_cyber") and category not in live:
+        return {
+            "status": "ok", "category": category, "data": None,
+            "error": "该 AA 专项榜尚未抓取，请点「刷新数据」重试",
+            "available_categories": _rank_categories(),
+            "capability_dimensions": _capability_dimensions(),
+            "source_categories": source_categories,
+        }
     if category.startswith("cap_"):
         if category not in live:
             known = {d["key"] for d in _capability_dimensions()}
@@ -425,8 +440,10 @@ def load_ai_rankings(category="overall"):
 
 def _rank_categories():
     base = [
-        {"id": "aa_index", "name": "AA 智能指数榜（全模型）", "icon": "target"},
-        {"id": "capability", "name": "能力榜单（八维分项）", "icon": "chart-bar"},
+        {"id": "aa_index", "name": "AA 智能指数榜（v5 全模型）", "icon": "target"},
+        {"id": "capability", "name": "能力榜单（v5 分项）", "icon": "chart-bar"},
+        {"id": "aa_coding_agent", "name": "AA 编程 Agent 榜", "icon": "terminal"},
+        {"id": "aa_cyber", "name": "AA 网络安全榜", "icon": "shield"},
         {"id": "arena", "name": "LMArena 偏好榜", "icon": "users"},
         {"id": "livebench", "name": "LiveBench 基准榜", "icon": "chart-line"},
         {"id": "video", "name": "视频生成榜", "icon": "video"},

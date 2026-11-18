@@ -458,7 +458,7 @@
             <span class="ph-ico"><i class="ph ph-trophy"></i></span>
             <div>
               <h2>模型天梯</h2>
-              <p class="ph-desc">AA 八维能力榜、LMArena 人类偏好榜、LiveBench 客观基准榜，以及热度与性价比榜。</p>
+              <p class="ph-desc">AA v5 能力榜 / 编程 Agent / 网络安全、LMArena 人类偏好榜、LiveBench 客观基准榜，以及热度与性价比榜。</p>
             </div>
             <div class="ph-acts">
               <span class="hud-chip" id="rankingsUpdatedChip">--</span>
@@ -466,8 +466,10 @@
             </div>
           </div>
           <div class="rankings-category-bar" id="rankingsCategoryBar">
-            <button class="rank-tab-btn active" data-rank="aa_index">AA 智能指数榜（全模型）</button>
-            <button class="rank-tab-btn" data-rank="capability">能力榜单（八维分项）</button>
+            <button class="rank-tab-btn active" data-rank="aa_index">AA 智能指数榜（v5）</button>
+            <button class="rank-tab-btn" data-rank="capability">能力榜单（v5 分项）</button>
+            <button class="rank-tab-btn" data-rank="aa_coding_agent">AA 编程 Agent 榜</button>
+            <button class="rank-tab-btn" data-rank="aa_cyber">AA 网络安全榜</button>
             <button class="rank-tab-btn" data-rank="arena">LMArena 偏好榜</button>
             <button class="rank-tab-btn" data-rank="livebench">LiveBench 基准榜</button>
             <button class="rank-tab-btn" data-rank="video">视频生成榜</button>
@@ -518,6 +520,7 @@
             </select>
             <label id="compareArenaBoardLabel" for="compareArenaBoard" style="display:none">Arena 榜类</label>
             <select id="compareArenaBoard" class="compare-source-select" style="display:none"></select>
+            <button class="btn-ghost" id="btnCompareTop4" title="自动选入当前数据源综合排名前 4 的不同系列旗舰模型"><i class="ph ph-sparkle"></i>一键对比 Top 4</button>
             <button class="btn-hud-secondary" id="btnCompareRefresh"><i class="ph ph-arrows-clockwise"></i>刷新当前数据库</button>
           </div>
           <div class="compare-picker">
@@ -1875,11 +1878,12 @@
       </div>
       <div class="modal-body" style="padding:14px 0;">
         <div style="font-size:12px;color:var(--tx2);margin-bottom:12px;line-height:1.6;">
-          可自行设置每个模型的输入、输出、缓存命中价格（单位：<strong>USD / 1M Tokens</strong>）。仪表盘预算卡与花费预估将基于此处配置自动折算，默认为各厂商官方 API 定价。
+          可自行设置每个模型的输入、输出、缓存命中价格（单位：<strong>USD / 1M Tokens</strong>）。仪表盘预算卡与花费预估将基于此处配置自动折算；支持一键<strong>「自动抓取定价」</strong>从官方源与评测库同步最新单价。
         </div>
         <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
           <input type="text" id="zpPricingSearchInput" class="hud-input" placeholder="🔍 搜索模型名称..." style="flex:1;min-width:140px;height:30px;font-size:12px;">
           <button type="button" class="btn-ghost sm" id="btnZpAddCustomModel" style="height:30px;font-size:12px;cursor:pointer;"><i class="ph ph-plus"></i> 添加模型</button>
+          <button type="button" class="btn-ghost sm" id="btnZpFetchOnlinePricing" style="height:30px;font-size:12px;cursor:pointer;" title="从官方与权威源自动抓取并更新最新模型定价"><i class="ph ph-cloud-arrow-down"></i> 自动抓取定价</button>
           <button type="button" class="btn-ghost sm" id="btnZpResetPricing" style="height:30px;font-size:12px;cursor:pointer;" title="重置全部配置为官方 API 默认定价"><i class="ph ph-arrow-counter-clockwise"></i> 恢复官方默认价</button>
         </div>
         <div style="max-height:calc(55vh / var(--xy-zoom, 1));overflow-y:auto;border:1px solid var(--hair);border-radius:8px;">

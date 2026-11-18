@@ -100,6 +100,44 @@ def _sum_row(cur, sql, args=()):
         return ()
 
 
+_EFFORT_LEVEL_WORDS = (
+    r"(?:Extra|Very|Ultra|Super)[-\s]*(?:High|Low)"
+    r"|X+[-\s]*High|X+[-\s]*Low"
+    r"|Non[-\s]*Thinking|No[-\s]*Thinking|Non[-\s]*Reasoning|No[-\s]*Reasoning"
+    r"|Deep[-\s]*Thinking|Extended[-\s]*Thinking|Adaptive[-\s]*Thinking"
+    r"|High|Medium|Med|Low|Minimal|Min|Maximum|Max"
+    r"|Thinking|Reasoning|Adaptive|None|Off"
+)
+_EFFORT_PAREN_RE = re.compile(
+    rf"\s*[\(（]\s*(?:(?:Thinking|Reasoning|Effort)\s*[:\-]\s*)?"
+    rf"(?:{_EFFORT_LEVEL_WORDS})"
+    rf"(?:\s+(?:Thinking|Reasoning|Effort|Mode))?\s*[\)）]\s*$",
+    re.IGNORECASE,
+)
+
+
+_MODEL_NAME_ALIASES = {
+    "orchestrator (argon)": "Gemini 4 Argon",
+    "gemini (m668)": "Gemini 4 Argon",
+    "gemini (m669)": "Gemini 4 Argon",
+    "gemini (m530)": "Gemini 4 Hydrogen",
+    "gemini (m531)": "Gemini 4 Hydrogen",
+}
+
+
+def _strip_model_effort(label):
+    """剥离模型名称末尾的思考强度后缀，并归并已知别称（如 Orchestrator (Argon) -> Gemini 4 Argon）。"""
+    if not isinstance(label, str):
+        return label
+    cur = label.strip()
+    for _ in range(3):
+        nxt = _EFFORT_PAREN_RE.sub("", cur).strip()
+        if not nxt or nxt == cur:
+            break
+        cur = nxt
+    return _MODEL_NAME_ALIASES.get(cur.lower(), cur)
+
+
 def hermes_agents(since_ts=None):
     """各 agent（profile）的 token 汇总。
     优先聚合 session_model_usage 获取多模型/子任务真实消耗；
@@ -158,7 +196,7 @@ def hermes_agents(since_ts=None):
             tool_calls = row[9] or 0
             api_calls = (row[10] or 0) if len(row) > 10 else 0
 
-            models = []
+            models_map = {}
             if has_smu:
                 smu_where, smu_args = "", []
                 if since_ts:
@@ -191,30 +229,32 @@ def hermes_agents(since_ts=None):
                     if smu_tot[5]:
                         api_calls = max(api_calls, smu_tot[5] or 0)
 
-                for m in cur.execute(f"""
+                sql_models = f"""
                         SELECT model, COUNT(DISTINCT session_id),
                                SUM(COALESCE(input_tokens,0)),
                                SUM(COALESCE(output_tokens,0)),
                                SUM(COALESCE(cache_read_tokens,0))
                         FROM session_model_usage {smu_where}
-                        GROUP BY model
-                        ORDER BY 3 DESC LIMIT 8""", smu_args):
-                    models.append({
-                        "model": m[0] or "(unknown)", "sessions": m[1],
-                        "input": m[2] or 0, "output": m[3] or 0,
-                        "cache_read": m[4] or 0})
+                        GROUP BY model"""
+                sql_args = smu_args
             else:
-                for m in cur.execute(f"""
+                sql_models = f"""
                         SELECT model, COUNT(*),
                                SUM(COALESCE(input_tokens,0)),
                                SUM(COALESCE(output_tokens,0)),
                                SUM(COALESCE(cache_read_tokens,0))
-                        FROM sessions {where_sess} GROUP BY model
-                        ORDER BY 3 DESC LIMIT 8""", args):
-                    models.append({
-                        "model": m[0] or "(unknown)", "sessions": m[1],
-                        "input": m[2] or 0, "output": m[3] or 0,
-                        "cache_read": m[4] or 0})
+                        FROM sessions {where_sess} GROUP BY model"""
+                sql_args = args
+            for m in cur.execute(sql_models, sql_args):
+                m_key = _strip_model_effort(m[0] or "(unknown)") or "(unknown)"
+                entry = models_map.setdefault(m_key, {
+                    "model": m_key, "sessions": 0,
+                    "input": 0, "output": 0, "cache_read": 0})
+                entry["sessions"] += m[1] or 0
+                entry["input"] += m[2] or 0
+                entry["output"] += m[3] or 0
+                entry["cache_read"] += m[4] or 0
+            models = sorted(models_map.values(), key=lambda x: -x["input"])[:8]
 
             denom = inp + cr + cw
             out.append({
@@ -485,9 +525,10 @@ def ccs_models(since_ts=None, limit=20):
                        SUM(cache_read_tokens), SUM(cache_creation_tokens)
                 FROM proxy_request_logs {where}
                 GROUP BY model, input_token_semantics""", args):
-            d = agg.setdefault(m[0], {"requests": 0, "input": 0,
-                                      "output": 0, "cache_read": 0,
-                                      "cache_creation": 0})
+            m_name = _strip_model_effort(m[0] or "(unknown)") or "(unknown)"
+            d = agg.setdefault(m_name, {"requests": 0, "input": 0,
+                                        "output": 0, "cache_read": 0,
+                                        "cache_creation": 0})
             d["requests"] += m[2] or 0
             d["output"] += m[4] or 0
             d["cache_read"] += m[5] or 0
@@ -532,7 +573,8 @@ MODEL_SOURCE_DEFINITIONS = (
 
 
 def _model_bucket(models, name):
-    key = str(name or "(unknown)").strip() or "(unknown)"
+    raw = str(name or "(unknown)").strip() or "(unknown)"
+    key = _strip_model_effort(raw) or "(unknown)"
     return models.setdefault(key, {
         "model": key, "requests": 0, "sessions": 0, "input": 0,
         "output": 0, "reasoning": 0, "cache_read": 0,
@@ -1311,7 +1353,7 @@ def _zcode_from_db(since_ts=None):
         FROM model_usage {where}""", args).fetchone()
     req, inp, outp, cr, cw, tot, sess, dur, ttft = r
     inp = inp or 0
-    models = []
+    models_map = {}
     try:
         for m in cur.execute(f"""
                 SELECT model_id, COUNT(*), SUM(input_tokens),
@@ -1319,14 +1361,21 @@ def _zcode_from_db(since_ts=None):
                        SUM(computed_total_tokens)
                 FROM model_usage {where} GROUP BY model_id
                 ORDER BY 6 DESC""", args):
-            models.append({
-                "model": m[0], "requests": m[1], "input": m[2] or 0,
-                "output": m[3] or 0, "cache_read": m[4] or 0,
-                "total": m[5] or 0,
-                "cache_hit_rate": round((m[4] or 0) / (m[2] or 1), 4),
+            mname = _strip_model_effort(m[0] or "(unknown)") or "(unknown)"
+            row = models_map.setdefault(mname, {
+                "model": mname, "requests": 0, "input": 0,
+                "output": 0, "cache_read": 0, "total": 0,
             })
+            row["requests"] += m[1] or 0
+            row["input"] += m[2] or 0
+            row["output"] += m[3] or 0
+            row["cache_read"] += m[4] or 0
+            row["total"] += m[5] or 0
     except Exception:
         pass
+    models = sorted(models_map.values(), key=lambda x: -x["total"])
+    for row in models:
+        row["cache_hit_rate"] = round(row["cache_read"] / (row["input"] or 1), 4)
     agents = []
     try:
         for a in cur.execute(f"""
@@ -1417,7 +1466,7 @@ def _zcode_from_transcripts(since_ts=None):
                                          ("cacheWriteTokens", "cache_write"),
                                          ("totalTokens", "total")):
                         tot[k_dst] += u.get(k_src, 0) or 0
-                    key = turn_model.get(tid, "(unknown)")
+                    key = _strip_model_effort(turn_model.get(tid, "(unknown)")) or "(unknown)"
                     e = models.setdefault(key, {
                         "model": key, "requests": 0, "input": 0, "output": 0,
                         "cache_read": 0, "cache_write": 0, "total": 0})
@@ -1884,7 +1933,7 @@ def _codex_models(since_ts=None, per=None):
         for ev in item[3]:
             w = ev[1] + ev[2] + ev[3] + ev[4]
             f_all += w
-            name = ev[5]
+            name = _strip_model_effort(ev[5]) or ev[5]
             m_all[name] = m_all.get(name, 0) + w
             if since_ts is None or ev[0] >= since_ts:
                 m_win[name] = m_win.get(name, 0) + w
@@ -1907,8 +1956,9 @@ def _codex_models(since_ts=None, per=None):
         else:
             # 无带时间戳事件的文件：沿用预制分摊行，整窗计入（与旧口径一致）
             for mtime, model, requests, inp, cached, cache_write, outp in item[2]:
-                row = grouped.setdefault(model, {
-                    "model": model, "requests": 0, "input": 0, "output": 0,
+                mname = _strip_model_effort(model) or model
+                row = grouped.setdefault(mname, {
+                    "model": mname, "requests": 0, "input": 0, "output": 0,
                     "cache_read": 0, "cache_write": 0,
                 })
                 row["requests"] += requests
@@ -2151,11 +2201,7 @@ def _ls_call(method, body, timeout=60):
         return json.loads(r.read().decode("utf-8", "replace"))
 
 
-def _strip_ag_effort(label):
-    """剥离模型名称末尾的思考强度后缀，如 (High)/(Medium)/(Low)/(Thinking)，使同模型不同强度合并统计。"""
-    if not isinstance(label, str):
-        return label
-    return re.sub(r"\s*\((?:High|Medium|Low|Thinking|Minimal)\)\s*$", "", label, flags=re.IGNORECASE).strip()
+_strip_ag_effort = _strip_model_effort
 
 
 def _ag_load_cache():
@@ -2193,6 +2239,17 @@ _ANTIGRAVITY_MODEL_MAP = {
     "MODEL_PLACEHOLDER_M417": "Gemini 4 Argon",
     "MODEL_PLACEHOLDER_M418": "Gemini 4 Argon",
     "MODEL_PLACEHOLDER_M419": "Gemini 4 Argon",
+    "MODEL_PLACEHOLDER_M421": "Gemini 4 Argon",
+    "MODEL_PLACEHOLDER_M525": "Gemini 4 Hydrogen",
+    "MODEL_PLACEHOLDER_M526": "Gemini 4 Hydrogen",
+    "MODEL_PLACEHOLDER_M527": "Gemini 4 Hydrogen",
+    "MODEL_PLACEHOLDER_M528": "Gemini 4 Hydrogen",
+    "MODEL_PLACEHOLDER_M529": "Gemini 4 Hydrogen",
+    "MODEL_PLACEHOLDER_M530": "Gemini 4 Hydrogen",
+    "MODEL_PLACEHOLDER_M531": "Gemini 4 Hydrogen",
+    "MODEL_PLACEHOLDER_M668": "Gemini 4 Argon",
+    "MODEL_PLACEHOLDER_M669": "Gemini 4 Argon",
+    "MODEL_PLACEHOLDER_M670": "Gemini 4 Carbon",
     "MODEL_PLACEHOLDER_M400": "Claude Opus 5.5",
     "MODEL_PLACEHOLDER_M401": "Claude Opus 5.5",
     "MODEL_PLACEHOLDER_M402": "Claude Opus 5.5",
@@ -2248,6 +2305,13 @@ def _sync_ag_model_map(min_interval=60.0):
         cache = _ag_load_cache()
         dyn = dict(cache.get("_model_map") or {}) if isinstance(cache.get("_model_map"), dict) else {}
         updated = False
+        for k, v in list(dyn.items()):
+            if isinstance(k, str) and isinstance(v, str) and v:
+                cleaned = _strip_ag_effort(v)
+                if cleaned != v:
+                    dyn[k] = cleaned
+                    updated = True
+                _ANTIGRAVITY_MODEL_MAP[k] = cleaned
         for c in configs:
             m_id = ((c.get("modelOrAlias") or {}).get("model") or "").strip()
             label = _strip_ag_effort((c.get("label") or "").strip())
@@ -3180,8 +3244,9 @@ def dsh_stats(since_ts=None):
     denom = inp + cr + cw
     models = {}
     for r in rows:
-        row = models.setdefault(r[1] or "(unknown)", {
-            "model": r[1] or "(unknown)", "requests": 0, "input": 0,
+        mname = _strip_model_effort(r[1] or "(unknown)") or "(unknown)"
+        row = models.setdefault(mname, {
+            "model": mname, "requests": 0, "input": 0,
             "output": 0, "cache_read": 0, "cache_write": 0, "total": 0})
         row["requests"] += 1
         row["input"] += r[2]
@@ -3300,8 +3365,9 @@ def pi_stats(since_ts=None):
                         total_cost += float(usage.get("cost_usd") or 0.0)
                         has_cost = True
 
-                    mdl = (message.get("model") or message.get("modelID")
-                           or entry.get("model") or entry.get("modelID") or "(unknown)")
+                    raw_mdl = (message.get("model") or message.get("modelID")
+                               or entry.get("model") or entry.get("modelID") or "(unknown)")
+                    mdl = _strip_model_effort(raw_mdl) or "(unknown)"
                     mrow = models.setdefault(mdl, {
                         "model": mdl, "requests": 0, "input": 0,
                         "output": 0, "cache_read": 0, "cache_write": 0, "total": 0
@@ -3592,7 +3658,8 @@ def _rate_series(now, range_min=60, bucket_sec=60):
         e["output_tokens"] = e.get("output_tokens", 0) + (outp or 0)
         e["cost"] += cost or 0.0
         if model:
-            me = e["by_model"].setdefault(model, {"requests": 0, "tokens": 0, "output_tokens": 0, "cost": 0.0})
+            mkey = _strip_model_effort(model) or model
+            me = e["by_model"].setdefault(mkey, {"requests": 0, "tokens": 0, "output_tokens": 0, "cost": 0.0})
             me["requests"] += reqs
             me["tokens"] += toks
             me["output_tokens"] = me.get("output_tokens", 0) + (outp or 0)
@@ -4025,6 +4092,9 @@ def pulse():
                     "cost": pcost, "status": 200, "latency_ms": 0, "kind": "call"})
         except Exception:
             pass
+        for r in reqs:
+            if r.get("model"):
+                r["model"] = _strip_model_effort(r["model"]) or r["model"]
         reqs.sort(key=lambda x: x["ts"], reverse=True)
         out["ripple"] = [x for x in reqs if x["ts"] >= now - 1800]
         # recent 40 按「每源轮转」取：高频源流量大时其他源的代表行不会被挤出
