@@ -117,16 +117,20 @@ _EFFORT_PAREN_RE = re.compile(
 
 
 _MODEL_NAME_ALIASES = {
-    "orchestrator (argon)": "Gemini 4 Argon",
-    "gemini (m668)": "Gemini 4 Argon",
-    "gemini (m669)": "Gemini 4 Argon",
+    "gemini (m668)": "Orchestrator (Argon)",
+    "gemini (m669)": "Orchestrator (Argon)",
+    "gemini (m537)": "Orchestrator (Neon)",
+    "gemini (m532)": "Gemini 4 Neon",
+    "gemini (m533)": "Gemini 4 Neon",
+    "gemini (m534)": "Gemini 4 Neon",
+    "gemini (m535)": "Gemini 4 Neon",
     "gemini (m530)": "Gemini 4 Hydrogen",
     "gemini (m531)": "Gemini 4 Hydrogen",
 }
 
 
 def _strip_model_effort(label):
-    """剥离模型名称末尾的思考强度后缀，并归并已知别称（如 Orchestrator (Argon) -> Gemini 4 Argon）。"""
+    """剥离模型名称末尾的思考强度后缀，并归并已知别称（如 Gemini (M530) -> Gemini 4 Hydrogen）。"""
     if not isinstance(label, str):
         return label
     cur = label.strip()
@@ -2217,7 +2221,10 @@ def _ag_load_cache():
     if isinstance(dyn_map, dict):
         for k, v in dyn_map.items():
             if isinstance(k, str) and isinstance(v, str) and v:
-                _ANTIGRAVITY_MODEL_MAP[k] = _strip_ag_effort(v)
+                cleaned = _strip_ag_effort(v)
+                if k in ("MODEL_PLACEHOLDER_M668", "MODEL_PLACEHOLDER_M669") and cleaned == "Gemini 4 Argon":
+                    continue
+                _ANTIGRAVITY_MODEL_MAP[k] = cleaned
     return _AG_MEM["data"]
 
 def _ag_save_cache(data):
@@ -2247,8 +2254,13 @@ _ANTIGRAVITY_MODEL_MAP = {
     "MODEL_PLACEHOLDER_M529": "Gemini 4 Hydrogen",
     "MODEL_PLACEHOLDER_M530": "Gemini 4 Hydrogen",
     "MODEL_PLACEHOLDER_M531": "Gemini 4 Hydrogen",
-    "MODEL_PLACEHOLDER_M668": "Gemini 4 Argon",
-    "MODEL_PLACEHOLDER_M669": "Gemini 4 Argon",
+    "MODEL_PLACEHOLDER_M532": "Gemini 4 Neon",
+    "MODEL_PLACEHOLDER_M533": "Gemini 4 Neon",
+    "MODEL_PLACEHOLDER_M534": "Gemini 4 Neon",
+    "MODEL_PLACEHOLDER_M535": "Gemini 4 Neon",
+    "MODEL_PLACEHOLDER_M537": "Orchestrator (Neon)",
+    "MODEL_PLACEHOLDER_M668": "Orchestrator (Argon)",
+    "MODEL_PLACEHOLDER_M669": "Orchestrator (Argon)",
     "MODEL_PLACEHOLDER_M670": "Gemini 4 Carbon",
     "MODEL_PLACEHOLDER_M400": "Claude Opus 5.5",
     "MODEL_PLACEHOLDER_M401": "Claude Opus 5.5",
@@ -2308,6 +2320,8 @@ def _sync_ag_model_map(min_interval=60.0):
         for k, v in list(dyn.items()):
             if isinstance(k, str) and isinstance(v, str) and v:
                 cleaned = _strip_ag_effort(v)
+                if k in ("MODEL_PLACEHOLDER_M668", "MODEL_PLACEHOLDER_M669") and cleaned == "Gemini 4 Argon":
+                    cleaned = "Orchestrator (Argon)"
                 if cleaned != v:
                     dyn[k] = cleaned
                     updated = True

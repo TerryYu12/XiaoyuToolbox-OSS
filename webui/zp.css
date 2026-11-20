@@ -350,6 +350,7 @@ body.light #pgDash .zp-source-pop { box-shadow: 0 14px 40px rgba(22, 28, 52, .16
 #pgDash .zp-chip.coral b { color: var(--zp-coral); }
 
 #pgDash .zp-live-dot {
+  flex-shrink: 0;
   width: 6px;
   height: 6px;
   border-radius: 50%;
@@ -380,13 +381,38 @@ body.light #pgDash .zp-source-pop { box-shadow: 0 14px 40px rgba(22, 28, 52, .16
   display: flex;
   flex-direction: column;
   justify-content: space-between;
+  gap: 6px;
   min-height: 0;
   overflow: hidden;
+}
+#pgDash .zp-hero-body {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+}
+#pgDash .zp-hero-left {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
 }
 #pgDash .zp-hero-head {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
+}
+#pgDash .zp-hero-head .zp-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 #pgDash .zp-capsule-toggle {
   margin-left: auto;
@@ -398,6 +424,10 @@ body.light #pgDash .zp-source-pop { box-shadow: 0 14px 40px rgba(22, 28, 52, .16
   border-radius: 999px;
   padding: 2px;
   gap: 2px;
+}
+#pgDash .zp-hero-unit-toggle {
+  margin-left: 0;
+  margin-right: 0;
 }
 #pgDash .zp-capsule-btn {
   appearance: none;
@@ -423,11 +453,11 @@ body.light #pgDash .zp-source-pop { box-shadow: 0 14px 40px rgba(22, 28, 52, .16
 }
 #pgDash .zp-hero-main {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex: 1;
-  min-height: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 5px;
+  min-width: 0;
 }
 #pgDash .zp-hero-num {
   display: flex;
@@ -450,8 +480,10 @@ body.light #pgDash .zp-source-pop { box-shadow: 0 14px 40px rgba(22, 28, 52, .16
 }
 #pgDash .zp-burst {
   flex-shrink: 0;
+  display: block;
   height: 100%;
-  max-height: clamp(40px, min(18cqw, 40cqh), 92px);
+  max-height: clamp(56px, min(32cqw, 86cqh), 136px);
+  max-width: 42cqw;
   aspect-ratio: 1;
   width: auto;
 }
@@ -476,6 +508,9 @@ body.light #pgDash .zp-source-pop { box-shadow: 0 14px 40px rgba(22, 28, 52, .16
 }
 @container (max-height: 130px) {
   #pgDash .zp-hero-foot { display: none; }
+}
+@container (max-height: 95px) {
+  #pgDash .zp-hero-unit-toggle { display: none; }
 }
 
 #pgDash .zp-kpis {

@@ -149,18 +149,22 @@
               </div>
 
               <div class="zp-card zp-hero" data-card-id="hero">
-                <div class="zp-hero-head">
-                  <span class="zp-live-dot"></span>
-                  <span class="zp-label">近 10 分钟生成速率</span>
-                  <div class="zp-capsule-toggle" id="zpHeroUnitToggle" role="group" aria-label="速率单位切换">
-                    <button type="button" class="zp-capsule-btn on" data-unit="s" title="每秒纯文本生成 Token">tok/s</button>
-                    <button type="button" class="zp-capsule-btn" data-unit="min" title="每分钟纯文本生成 Token">tok/min</button>
-                  </div>
-                </div>
-                <div class="zp-hero-main">
-                  <div class="zp-hero-num">
-                    <b id="zpHeroRate">--</b>
-                    <span class="zp-hero-unit" id="zpHeroUnit">tok / s</span>
+                <div class="zp-hero-body">
+                  <div class="zp-hero-left">
+                    <div class="zp-hero-head">
+                      <span class="zp-live-dot"></span>
+                      <span class="zp-label">近 10 分钟生成速率</span>
+                    </div>
+                    <div class="zp-hero-main">
+                      <div class="zp-hero-num">
+                        <b id="zpHeroRate">--</b>
+                        <span class="zp-hero-unit" id="zpHeroUnit">tok / s</span>
+                      </div>
+                      <div class="zp-capsule-toggle zp-hero-unit-toggle" id="zpHeroUnitToggle" role="group" aria-label="速率单位切换">
+                        <button type="button" class="zp-capsule-btn on" data-unit="s" title="每秒纯文本生成 Token">tok/s</button>
+                        <button type="button" class="zp-capsule-btn" data-unit="min" title="每分钟纯文本生成 Token">tok/min</button>
+                      </div>
+                    </div>
                   </div>
                   <svg class="zp-burst" id="zpBurst" width="120" height="120" viewBox="0 0 120 120"></svg>
                 </div>
